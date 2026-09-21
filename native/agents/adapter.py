@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Sequence
 
+from domain.contracts.canonical import to_canonical_agent_signal
 from domain.market import MarketSnapshot
 from domain.portfolio import PortfolioState
 from domain.proposal import AgentOutput
@@ -112,23 +113,35 @@ def agent_vote_to_agent_output(vote: AgentVote) -> AgentOutput:
     (`SourceProvenance.for_native_agent`) — c'est le SEUL endroit qui tague
     un signal comme natif. Aucune valeur par defaut dispersee ailleurs dans
     le code.
+
+    F8.7 (Canonical Convergence Closure) : cette fonction appelle desormais
+    `to_canonical_agent_signal` (domain/contracts/canonical.py) au lieu de
+    construire `AgentOutput(...)` directement. C'est le MEME point de
+    convergence que celui emprunte par le chemin externe
+    (external/normalization/normalizer.py::normalize_external_signal).
+    Audit prealable (F8.7) : `to_canonical_agent_signal` ne contenait deja
+    aucune hypothese specifique au format ExternalSignal — ses parametres
+    sont des primitives neutres (confidence/unknowns/contradictions/
+    risk_flags/evidence_refs/operational_metadata/source_provenance), donc
+    aucun refactor de la fonction elle-meme n'a ete necessaire (CAS A, pas
+    CAS B) : seul cet appelant a change sa facon de construire le signal.
     """
-    return AgentOutput(
-        name=vote.agent_id,
+    return to_canonical_agent_signal(
+        agent_id=vote.agent_id,
         category=str(vote.domain),
         signal=vote.proposed_verdict,
         confidence=float(vote.confidence),
         rationale=vote.claim,
-        unknowns=tuple(vote.unknowns),
-        contradictions=tuple(vote.contradictions),
-        risk_flags=tuple(vote.risk_flags),
-        evidence_refs=tuple(vote.evidence_refs),
-        source_provenance=SourceProvenance.for_native_agent(vote.agent_id),
-        inputs_digest={
+        unknowns=vote.unknowns,
+        contradictions=vote.contradictions,
+        risk_flags=vote.risk_flags,
+        evidence_refs=vote.evidence_refs,
+        operational_metadata={
             "vote": vote.vote,
             "layer": vote.layer,
             "severity_hint": str(vote.severity_hint),
         },
+        source_provenance=SourceProvenance.for_native_agent(vote.agent_id),
     )
 
 

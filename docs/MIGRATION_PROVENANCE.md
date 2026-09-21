@@ -1027,3 +1027,166 @@ natif ?"*
 **OUI.**
 
 F1 -> F8.6 = ARCHITECTURAL INTEGRATION CLOSED
+
+## F8.7 — Canonical Convergence Closure (2026-09-21)
+
+Objectif : fermer la derniere nuance documentee en F8.5/F8.6 — le chemin
+Native construisait `AgentOutput(...)` directement dans
+`native/agents/adapter.py::agent_vote_to_agent_output` au lieu d'emprunter
+`domain.contracts.canonical.to_canonical_agent_signal`, le point de
+convergence deja utilise par le chemin External depuis F8. Aucune nouvelle
+fonctionnalite : uniquement un audit puis, si justifie, un refactor minimal.
+
+### Audit (etape obligatoire avant toute modification)
+
+`to_canonical_agent_signal` (`domain/contracts/canonical.py`) a ete relue
+en entier. Sa signature est deja entierement neutre : `agent_id, category,
+signal, confidence, rationale, unknowns, contradictions, risk_flags,
+evidence_refs, operational_metadata, source_provenance` — aucun de ces
+parametres ne presuppose un format `ExternalSignal` (pas de champ
+`organization_id`/`adapter_id` bruts, pas de logique de validation
+specifique a l'externe : cette logique reste dans
+`external/contracts/external_signal.py` et
+`external/normalization/normalizer.py`, en amont de l'appel).
+
+**Verdict : CAS A — fonction deja reellement generique.** Aucun refactor de
+`to_canonical_agent_signal` elle-meme n'etait necessaire ni souhaitable
+(CAS B, extraction d'une primitive plus bas niveau, n'a pas eu lieu car il
+n'y avait rien a extraire : la fonction existante EST deja la primitive
+commune).
+
+### Ancien chemin Native (avant F8.7)
+
+```python
+def agent_vote_to_agent_output(vote: AgentVote) -> AgentOutput:
+    return AgentOutput(
+        name=vote.agent_id,
+        category=str(vote.domain),
+        signal=vote.proposed_verdict,
+        confidence=float(vote.confidence),
+        rationale=vote.claim,
+        unknowns=tuple(vote.unknowns),
+        contradictions=tuple(vote.contradictions),
+        risk_flags=tuple(vote.risk_flags),
+        evidence_refs=tuple(vote.evidence_refs),
+        source_provenance=SourceProvenance.for_native_agent(vote.agent_id),
+        inputs_digest={
+            "vote": vote.vote,
+            "layer": vote.layer,
+            "severity_hint": str(vote.severity_hint),
+        },
+    )
+```
+
+### Nouveau chemin Native (apres F8.7)
+
+```python
+def agent_vote_to_agent_output(vote: AgentVote) -> AgentOutput:
+    return to_canonical_agent_signal(
+        agent_id=vote.agent_id,
+        category=str(vote.domain),
+        signal=vote.proposed_verdict,
+        confidence=float(vote.confidence),
+        rationale=vote.claim,
+        unknowns=vote.unknowns,
+        contradictions=vote.contradictions,
+        risk_flags=vote.risk_flags,
+        evidence_refs=vote.evidence_refs,
+        operational_metadata={
+            "vote": vote.vote,
+            "layer": vote.layer,
+            "severity_hint": str(vote.severity_hint),
+        },
+        source_provenance=SourceProvenance.for_native_agent(vote.agent_id),
+    )
+```
+
+Seul le point d'assemblage a change. `native/agents/domains/trading_agents.py`
+(les 17 agents eux-memes, COPY_AS_IS depuis le core) n'a pas ete touche —
+ils continuent de produire des `AgentVote`, sans savoir que ce vote finit
+par passer par le meme builder que le chemin externe.
+
+### Primitive canonique commune
+
+`domain.contracts.canonical.to_canonical_agent_signal` — inchangee, deja
+generique. Desormais appelee par LES DEUX chemins :
+- `native/agents/adapter.py::agent_vote_to_agent_output`
+- `external/normalization/normalizer.py::normalize_external_signal`
+
+Aucune deuxieme implementation, aucun alias, aucune fonction miroir.
+
+### Fichiers modifies
+
+- `native/agents/adapter.py` — import ajoute
+  (`from domain.contracts.canonical import to_canonical_agent_signal`),
+  corps de `agent_vote_to_agent_output` remplace par un appel a cette
+  fonction, docstring mise a jour pour documenter F8.7.
+- `tests/unit/test_canonical_convergence.py` (nouveau, 11 tests).
+- `docs/MIGRATION_PROVENANCE.md` (cette section).
+
+Aucun changement a : `domain/contracts/canonical.py`,
+`external/normalization/normalizer.py`, `governance/bridge/*`,
+`execution/binder/*`, `market/adapters/alpaca/*`, `proof/receipts/*`,
+`domain/receipt.py` (semantique du receipt intacte).
+
+### Compatibilite
+
+`ExternalStackAnalysisAdapter`/`normalize_external_signal` n'ont pas ete
+touches — leur comportement est verifie inchangé par
+`test_external_normalization_unchanged_after_native_refactor` et par la
+suite `tests/unit/test_external_adapter.py` (12 tests, deja verte avant
+F8.7, toujours verte apres). Les 17 agents natifs
+(`native/agents/domains/trading_agents.py`) n'ont pas eu besoin d'etre
+modifies : ils ignorent totalement l'existence de l'External Adapter, comme
+exige. Aucun agent natif n'appelle ni ne connait
+`ExternalStackAnalysisAdapter`, `ExternalSignal`, ou tout module sous
+`external/`.
+
+### Tests ajoutes (`tests/unit/test_canonical_convergence.py`, 11 tests)
+
+1. `test_native_adapter_calls_the_same_canonical_builder_as_external` — PASS
+2. `test_native_unknowns_survive_to_agent_output` — PASS
+3. `test_native_contradictions_survive_to_agent_output` — PASS
+4. `test_native_risk_flags_survive_to_agent_output` — PASS
+5. `test_native_evidence_refs_survive_to_agent_output` — PASS
+6. `test_native_source_provenance_survives_to_agent_output` — PASS
+7. `test_external_normalization_unchanged_after_native_refactor` — PASS
+8. `test_native_and_external_produce_the_same_canonical_type` — PASS
+9. `test_provenance_alone_never_changes_decision_authority` — PASS
+10. `test_native_roster_adapter_full_analyse_uses_canonical_builder_end_to_end`
+    (cycle Native complet, 17 agents reels, remplace la duplication d'un
+    scenario d'integration complet — les scenarios F8.5/F8.6 existants
+    restent la preuve de reference pour le cycle complet et tournent
+    inchanges dans la suite globale) — PASS
+11. `test_only_the_canonical_builder_constructs_agent_output_directly`
+    (garde-fou architectural : scan AST de tout le code source hors tests,
+    verifie qu'aucun fichier autre que `domain/proposal.py` et
+    `domain/contracts/canonical.py` ne construit `AgentOutput(...)`
+    directement avec 4+ arguments nommes) — PASS
+
+Item "cycle External complet toujours PASS" : verifie par la suite
+existante `tests/integration/test_end_to_end_external_full_stack.py`
+(F8.6), relancee telle quelle dans la suite globale, toujours verte.
+
+### Suite totale
+
+`pytest tests/ -q` -> **157 passed, 1 skipped** (146 + 11 nouveaux, zero
+regression, le seul skip est celui documente depuis F2).
+
+### Dette restante reelle avant F9
+
+Aucune dette de convergence restante. La seule limite documentee est
+generale et deja connue depuis les phases precedentes : le garde-fou
+architectural (test 11) est une heuristique AST pragmatique (appel a
+`AgentOutput(...)` avec >=4 kwargs), pas une garantie absolue — un
+contournement deliberement adversarial (ex: `AgentOutput(**locals())`)
+pourrait y echapper. Suffisant pour empecher une reconstruction
+accidentelle d'une deuxieme logique de canonicalisation, pas pour se
+proteger d'un code malveillant.
+
+**REPONSE SANS NUANCE** : *"Existe-t-il maintenant UN SEUL mecanisme de
+canonicalisation partage par Native et External avant la gouvernance ?"*
+
+**OUI.**
+
+F1 -> F8.7 = CANONICAL ARCHITECTURE CLOSED
