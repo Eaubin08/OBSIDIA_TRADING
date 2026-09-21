@@ -1271,3 +1271,70 @@ nouveau moteur unifie -- F10 doit decider quel sous-ensemble de comportements
 historiques merite un test de parite avant de figer une baseline, et si le
 `merkle_seal.json` dedie a OBSIDIA_TRADING doit etre cree a ce stade ou
 reporte.
+
+## F10.1 — Historical Regression / Compatibility Audit (2026-09-21)
+
+Matrice complete (39 proprietes) : `docs/F10_HISTORICAL_REGRESSION_MATRIX.md`.
+39 proprietes auditees contre MVP-obsidia-, Obsidia-lab-trad/TradingWorld,
+agent-trad-main, l'archive ERC-8004 et le roster actuel du core. 20 PRESERVED,
+12 IMPROVED, 6 REPLACED_EQUIVALENTLY, 0 INTENTIONALLY_DROPPED, 1 MISSING
+("Naive vs Governed", jamais implemente, `apps/naive_vs_governed/` vide),
+2 NOT_PORTABLE (packs de tests formels du Kernel — hors perimetre ; matrice
+de Markov non calibree — dette heritee documentee). `pytest tests/ -q` ->
+168 passed, 1 skipped (zero regression par rapport a F9). REGRESSION=0
+confirme independamment par le parent (deuxieme execution manuelle de
+pytest, resultat identique).
+
+### Statut F10.1 : DONE.
+
+## F10.2 — Freeze (2026-09-21)
+
+Fichiers crees :
+- `docs/FREEZE_MANIFEST.json` + `docs/FREEZE_MANIFEST.md` (manifest machine
+  et lisible)
+- `docs/SEAL_SCOPE.md` (perimetre exact du merkle seal — voir ce document
+  pour la liste complete de ce qui est/n'est pas scelle)
+- `scripts/compute_seal.py` (algorithme reproductible : SHA-256 par fichier,
+  puis SHA-256 de la liste triee (chemin, hash) -> root_hash)
+- `merkle_seal.json` (racine du repo, **dedie a OBSIDIA_TRADING uniquement**
+  — le merkle_seal.json du core Obsidia n'a pas ete touche)
+- `tests/unit/test_freeze_manifest.py` (5 tests)
+
+Perimetre scelle : 83 fichiers (code de production sous domain/, native/,
+external/, market/, simulation/, governance/, execution/, proof/, apps/, plus
+5 documents de gouvernance). tests/, __pycache__/, proof/receipts/data/,
+.git/ explicitement exclus (voir docs/SEAL_SCOPE.md pour le detail complet).
+
+Verifications faites avant generation du seal (pas supposees) :
+- `receipt_schema_version` = "receipt.v1" (`domain/receipt.py`, inchange
+  depuis F7).
+- Proof policy toujours PROOF_BEST_EFFORT : `execution/binder/engine.py`,
+  le bloc `try: receipt = self.proof.record(receipt) ... except Exception:
+  note(...)` avale toujours l'echec d'ecriture sans interrompre le cycle —
+  confirme par lecture directe, pas suppose.
+- `native/agents/adapter.py` utilise bel et bien `to_canonical_agent_signal`
+  depuis F8.7 — la dette "native != canonical builder" est donc **retiree**
+  de la liste des dettes connues du freeze (elle etait deja resolue, ne pas
+  la recopier par erreur).
+- `apps/naive_vs_governed/` confirme toujours vide (`ls` direct).
+- Matrice de Markov confirmee non calibree (docstring `market_process.py`
+  lignes 19-21 et 65, lu directement).
+
+`pytest tests/ -q` -> **173 passed, 1 skipped** (168 + 5 nouveaux tests de
+freeze, zero regression).
+
+### Statut F10.2 : DONE.
+
+```
+F1 -> F10 = DONE
+
+ARCHITECTURE: CLOSED
+CANONICAL CONVERGENCE: CLOSED
+NATIVE PATH: PASS
+EXTERNAL PATH: PASS
+PAPER EXECUTION: PASS
+PROOF / REPLAY: PASS
+HISTORICAL REGRESSION: PASS
+KNOWN REGRESSIONS: 0
+FREEZE: SEALED
+```
