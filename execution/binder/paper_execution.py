@@ -17,6 +17,7 @@ from typing import Optional, Sequence
 
 from domain.ports.clock import ClockPort, SystemClock
 from domain.ports.order_ledger import OrderLedgerPort
+from domain.ports.proof import ProofPort
 from domain.types import Mode
 from execution.binder.contracts import (
     AggregationPort,
@@ -66,6 +67,7 @@ def build_paper_cycle_engine(
     alpaca_config: Optional[AlpacaConfig] = None,
     planner: Optional[PlannerPort] = None,
     clock: Optional[ClockPort] = None,
+    proof: Optional[ProofPort] = None,
 ) -> CycleEngine:
     """
     Assemble un `CycleEngine` PAPER complet : Bridge -> Binder -> Alpaca.
@@ -79,6 +81,11 @@ def build_paper_cycle_engine(
     ce module de production (verifie par
     tests/integration/test_paper_execution_pipeline.py::
     test_fixture_client_not_loadable_from_production_config).
+
+    `proof` (F7, additif, retro-compatible) : port de preuve optionnel
+    (typiquement `proof.receipts.receipt_store.ReceiptStore`). Si omis
+    (defaut `None`), le comportement est identique a F6 : `CycleEngine`
+    chaine ses receipts en memoire depuis `GENESIS_HASH` sans les persister.
     """
     config = alpaca_config or AlpacaConfig.from_env()
     require_paper_mode(config)  # leve LiveModeRejected avant toute construction broker
@@ -101,4 +108,5 @@ def build_paper_cycle_engine(
         clock=clock,
         planner=planner or ExecutionPlanner(),
         order_ledger=order_ledger,
+        proof=proof,
     )

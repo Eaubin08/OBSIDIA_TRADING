@@ -445,3 +445,156 @@ Plus un 11e test explicitement demande : `test_fixture_client_not_loadable_from_
 **Statut F6 : DONE.**
 
 **Prochain verrou concret avant F7 (Proof/Replay)** : le receipt actuel (`CycleReceipt`) est deja chaine (F2, `previous_receipt_hash`/`decision_hash()`) mais aucun mecanisme de PERSISTANCE durable de la chaine n'existe encore dans ce repo (le port `proof` de `CycleEngine` est optionnel et jamais implemente ici) — F7 doit decider ou et comment stocker durablement la chaine de receipts (fichier JSONL comme l'order ledger ? autre ?), et si le rejeu deterministe (`FrozenClock`/`FixedClock`, deja portes) doit etre exerce contre cette chaine stockee pour prouver qu'un rejeu produit exactement le meme hash.
+
+## F7 - Proof/Replay (2026-09-21)
+
+```
+Destination: proof/receipts/{receipt_store,receipt_chain,receipt_verify,replay}.py
+Source: domain/receipt.py (F3, reutilise) + conception nouvelle
+Original path: N/A (nouveau code, s'appuie sur CycleReceipt/verify_chain existants)
+Action: REWRITE_SMALL (persistance/verification/replay) + reutilisation explicite
+        de CycleReceipt (pas de duplication, voir receipt_chain.py docstring)
+Reason: F3 avait deja le chainage (GENESIS_HASH, decision_hash, previous_receipt_hash)
+        mais aucune persistance durable ni mecanisme de replay
+Behavior changed: NO pour domain/receipt.py (inchange) ; NOUVEAU comportement
+        additif pour la persistance/verification/replay
+Authority impact: NONE (verifie explicitement par
+        tests/unit/test_receipt_chain.py::test_proof_is_not_authority et
+        test_persisting_a_receipt_never_changes_its_decision, et
+        test_replay_has_no_broker_or_binder_import)
+```
+
+```
+Destination: execution/binder/paper_execution.py (parametre `proof` ajoute)
+Source: modification additive du point d'assemblage F6
+Original path: N/A
+Action: ADAPT (une ligne de parametre + passage a CycleEngine(proof=...), retro-compatible :
+        appels existants sans `proof=` gardent le comportement F6 exact, GENESIS_HASH en memoire)
+Reason: brancher ReceiptStore sur le pipeline PAPER sans dupliquer l'assemblage
+Behavior changed: NO par defaut (proof=None inchange) ; OUI si `proof=` est fourni
+Authority impact: NONE
+```
+
+### Schema du receipt persiste
+
+Format JSONL, une ligne = stored_hash (sha256) + receipt.as_dict() complet (deja defini en F3,
+domain/receipt.py::CycleReceipt) : cycle_id, parent_cycle_id, receipt_schema_version, decision_id,
+mode, state_fingerprint, decision (authority/authority_legacy/reason/structural_score/risk_score/
+metrics dont kx108_response et local_signal/rules_evaluated/proposal complet avec agent_outputs
+-> unknowns/contradictions/risk_flags/evidence_refs), previous_receipt_hash, execution_plan,
+execution_result, consequence, degraded_reasons, extensions (dont, depuis F7, "f7_simulation" :
+seed/params/engine_version/output_digest/n_steps pour le rejeu deterministe). stored_hash est
+calcule a l'ecriture sur le meme sous-ensemble de champs que CycleReceipt.decision_hash(), rejoue
+a la lecture par ReceiptChainVerifier - c'est ce qui detecte une alteration meme sur le DERNIER
+receipt de la chaine (le chainage par previous_receipt_hash seul ne le detecterait pas s'il n'y a
+pas de receipt suivant).
+
+### Mecanisme de hash-chain
+
+hash_n = H(hashable_subset(receipt_n)), receipt_{n+1}.previous_receipt_hash = hash_n. Genese :
+GENESIS_HASH = "0"*64 (deja definie en F3, reutilisee telle quelle). ReceiptChainVerifier.verify_lines
+parcourt la chaine en O(n) et retourne un IntegrityReport(status=EMPTY|VALID|CORRUPTED, first_error,
+first_error_index) - jamais de reparation silencieuse. Detecte : alteration de contenu (recalcul
+de hash != stored_hash), suppression/reordonnancement (rupture previous_hash), cycle_id duplique,
+JSON malforme (erreur explicite a la lecture), version de schema inconnue (refus explicite plutot
+que tentative d'interpretation).
+
+### Mecanisme de persistance
+
+Append-only JSONL. Ecriture atomique par flush() + os.fsync(handle.fileno()) immediatement apres
+chaque ligne (alternative ecartee : reecriture complete via fichier temporaire + rename a chaque
+append, incompatible avec l'append-only demande). Aucune reecriture en place : record() leve
+DuplicateCycleError sur un cycle_id deja present plutot que d'ecraser une ligne existante.
+
+### Mecanisme de replay (2 niveaux)
+
+- ReplayEngine.replay_audit(cycle_id) : reconstruction pure lecture (observed/proposed/
+  kx108_verdict/binder_decision/execution) depuis un receipt stocke, zero effet de bord.
+- ReplayEngine.replay_deterministic(cycle_id) : si extensions["f7_simulation"] est present,
+  reconstruit simulation.trading_world.market_process.TradingParams depuis les parametres
+  stockes et rejoue run_trading_simulation (F4, deterministe via Mulberry32(seed)), compare le
+  digest du resultat au digest original -> MATCH/DIVERGENCE/NOT_REPLAYABLE (cas normal si le
+  pipeline F6 actuel n'a pas branche simulation/ dans le cycle, voir dette ci-dessous).
+
+### Tests - PASS/FAIL exact des 18 scenarios demandes + suite complete
+
+tests/unit/test_receipt_chain.py (12 tests, scenarios 1-9 + 3 tests de frontiere) : 12/12 PASS.
+tests/integration/test_replay.py (12 tests, scenarios 10-18 + variantes) : 12/12 PASS.
+pytest tests/ -q (suite complete) : 107 passed, 1 skipped - zero regression sur les 83 passed/1
+skipped acquis a la fin de F6.
+
+Tests d'alteration realises : modification d'un ancien receipt (detectee via stored_hash),
+suppression d'un receipt intermediaire (rupture de chaine detectee), mauvais previous_hash
+(detecte), JSON malforme (erreur explicite), cycle_id duplique (refuse a l'ecriture par
+DuplicateCycleError, et detecte a la lecture si present malgre tout dans le fichier).
+
+Comportement sur restart : une nouvelle instance de ReceiptStore pointant sur le meme fichier
+reprend last_hash() correctement (test_restart_resumes_chain_head_correctly) et peut continuer a
+chainer de nouveaux receipts sans rupture.
+
+Comportement sur receipt corrompu : ReceiptChainVerifier retourne IntegrityStatus.CORRUPTED avec
+first_error et first_error_index explicites - jamais de correction silencieuse, jamais de crash
+non gere (JSON malforme -> CorruptedReceiptLogError capturee et transformee en rapport explicite).
+
+### Lien ledger (F6) et receipts (F7)
+
+Non fusionnes, comme demande. execution/binder/order_ledger_jsonl.py (F6) reste responsable de
+l'idempotence des ordres ; proof/receipts/ (F7) reste responsable de la preuve complete du cycle
+decisionnel. Ils se referencent via decision_id/execution_plan_id presents dans les deux
+journaux, sans dependance de code de l'un vers l'autre. JsonlOrderLedger.verify_integrity()
+(ecrite en F6 mais jamais exercee, dette signalee a l'epoque) est desormais testee explicitement
+par test_order_ledger_verify_integrity_is_exercised (scenario 18).
+
+### Politique de preuve - PROOF_REQUIRED vs PROOF_BEST_EFFORT
+
+Constat factuel sur le comportement ACTUEL de execution/binder/engine.py::_prove (F3, code
+inchange par F7) : le bloc `if self.proof is not None: try: receipt = self.proof.record(receipt)
+or receipt except Exception as exc: note(f"echec d'ecriture de la preuve: {exc}")` implemente
+PROOF_BEST_EFFORT - si ReceiptStore.record() echoue, le cycle continue et pretend avoir reussi
+cote decision/execution, seule une note de log signale l'echec de preuve. Pour le chemin
+gouverne critique, la politique cible documentee ici est PROOF_REQUIRED : un echec de
+persistance de la preuve devrait empecher le cycle de se presenter comme reussi. Conformement a
+la consigne F7, ce changement de comportement global n'est PAS applique maintenant (il
+modifierait engine.py, deja teste et fige depuis F3, sans revue separee dediee) - seul le
+mecanisme (ReceiptStore, exceptions typees DuplicateCycleError/CorruptedReceiptLogError) est pret
+a etre branche en mode PROOF_REQUIRED par un futur appelant qui choisirait de ne pas avaler
+l'exception.
+
+### Dette restante (honnetement signalee)
+
+- StoredCycleReceipt (lecture) n'est PAS une reconstruction complete de CycleReceipt en objets
+  vivants (Decision/ActionProposal/ExecutionPlan/ExecutionResult imbriques) : c'est un modele de
+  lecture leger qui conserve le dictionnaire brut complet (rien n'est perdu pour l'audit) mais
+  n'expose pas les memes methodes de comportement que l'objet d'origine. Reconstruire six
+  dataclasses imbriquees depuis un JSON generique etait hors budget de temps de F7.
+- Le replay deterministe ne peut s'exercer que sur des receipts portant deja une extension
+  f7_simulation - le pipeline F6 actuel (paper_execution.py::build_paper_cycle_engine) ne branche
+  pas encore simulation/ dans le cycle reel (F4 et F6 sont restes deux couches independantes
+  jusqu'ici). Les tests de replay deterministe attachent donc l'extension manuellement pour
+  prouver le MECANISME ; le cablage simulation -> cycle -> receipt reste a faire si un futur
+  usage l'exige (probablement F8/F9, hors perimetre F7).
+- Ecriture atomique par flush+fsync reduit mais n'elimine pas totalement, sur tous les systemes
+  de fichiers, le risque theorique d'une ligne partiellement ecrite en cas de crash exactement
+  pendant l'appel write() - alternative (fichier temporaire + rename par ligne) ecartee car
+  incompatible avec l'append-only demande.
+
+**Statut F1->F7 : DONE.**
+
+**Confirmation explicite demandee** :
+- Proof != Authority : prouve par test_proof_is_not_authority (aucune methode de
+  receipt_store.py/receipt_verify.py ne cree ni ne retourne d'Authority/Decision).
+- Replay != Execution : prouve par test_replay_has_no_broker_or_binder_import (aucun import
+  market.adapters.*/execution.binder.paper_execution dans replay.py) et
+  test_replay_never_calls_broker (le compteur d'appels du broker ne bouge pas pendant un replay).
+- Receipt != Decision : prouve par test_persisting_a_receipt_never_changes_its_decision
+  (outcome.decision.authority reste identique avant/apres persistance et relecture).
+
+**Prochain verrou concret avant F8 (External Stack Adapter)** : F8 doit construire la couche de
+normalisation generique qu'aucune generation historique ne fournit (confirme par l'audit,
+TRADING_MIGRATION_MATRIX.md). Avant de la coder, il faut decider ce que "provenance externe"
+signifie concretement pour le contrat canonique deja construit en F3.5 (domain/contracts/
+canonical.py) : un AgentOutput produit par une stack externe doit-il porter un champ de
+provenance distinct (ex: source_system) pour que le receipt puisse toujours repondre "cette
+observation venait du domaine natif ou d'un adapter externe", ou le contrat actuel suffit-il tel
+quel ? C'est une decision de conception a trancher avant d'ecrire external/normalization/, pas
+pendant.
