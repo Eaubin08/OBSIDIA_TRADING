@@ -11,14 +11,17 @@ Le fichier `domains/trading/trading_x108_gate.py` (et ses jumeaux `bank_x108_gat
 
 ## Conséquence pour ce repo
 
-**Il est impossible, depuis `OBSIDIA_TRADING`, de vérifier si le Kernel X-108 réel reproduit le bug B15 ou une correction équivalente.**
+**KNOWN BOUNDARY — LOCAL SIGNAL VERIFIED / REAL KX108 FORMULA NOT VERIFIED FROM THIS REPO.**
 
-Décision appliquée dans ce repo :
-1. La formule corrigée d'agent-trad-main (Option C) est conservée comme **`domain signal` / reference implementation** — utile pour développer, tester et démontrer le domaine en mode SIM/PAPER local, sans dépendance au Kernel réel.
-2. Elle **n'a jamais l'autorité finale**. Elle ne fait que produire un signal d'entrée soumis à la gouvernance.
-3. Quand la phase Governance (F5) sera activée en intégration réelle, le score doit être recalculé — ou validé — par le vrai KX108 via son contrat existant (`governance/bridge/`). La version locale ne doit jamais se substituer à lui.
-4. Toute divergence entre le signal local et le verdict du Kernel réel doit être journalisée (pattern `gap_status`, voir `apps/naive_vs_governed/`), jamais résolue silencieusement en faveur de l'un ou l'autre.
+Il est impossible, depuis `OBSIDIA_TRADING`, de vérifier si le Kernel X-108 réel reproduit le bug B15 ou une correction équivalente. Cette limite est structurelle (le Kernel est scellé, hors périmètre), pas un oubli d'audit.
+
+Décision appliquée dans ce repo (mise en œuvre concrète en F5 — Governance Bridge) :
+1. La formule corrigée d'agent-trad-main (Option C) est portée dans `governance/bridge/local_signal.py::compute_local_structural_signal` et utilisée comme **evidence/signal local** — utile pour développer, tester et démontrer le domaine en mode SIM/PAPER local, sans dépendance au Kernel réel.
+2. Elle **n'a jamais l'autorité finale**. `KX108GovernanceBridge` (`governance/bridge/governance_bridge.py`) l'attache uniquement au champ `Decision.structural_score` — jamais à `Decision.authority`. Le score local ne peut ni produire `ACT` lui-même, ni transformer un `HOLD`/`BLOCK` renvoyé par KX108 en `ACT` (vérifié par `tests/unit/test_governance_bridge.py`, tests 1-3).
+3. Le verdict d'autorité (`ACT`/`HOLD`/`BLOCK`) provient EXCLUSIVEMENT du champ `"verdict"` de la réponse du `KX108Client` injecté. Tant qu'aucun vrai Kernel n'est branché (`UnavailableKX108Client`), le système est **fail-closed** : indisponibilité ou réponse invalide → `Authority.HOLD` systématique, jamais `ACT` par défaut (tests 4-5).
+4. Toute divergence entre le signal local et le verdict du Kernel réel voyage dans `Decision.metrics["local_signal"]` et `Decision.metrics["kx108_response"]` — journalisée dans le receipt, jamais résolue silencieusement en faveur de l'un ou l'autre.
 
 ## Provenance
-- Formule : `native/indicators/structural_score.py` (portée depuis `agent-trad-main: agents/indicators.py`, post-B15)
+- Formule locale : `governance/bridge/local_signal.py` (portée depuis `agent-trad-main: agents/indicators.py::structural_score`, post-B15 — `triangle_mean`/`asymmetry_penalty` COPY_AS_IS ; `build_coherence_matrix` ADAPT depuis `core/guard_x108.py::_build_coherence_matrix`, entrée changée de l'ancien `AgentVote.signal` vers `domain.proposal.AgentOutput.signal` du roster natif à 17 agents)
+- Pont vers KX108 : `governance/bridge/{governance_bridge,ir_payload,kx108_client}.py` (F5, nouveau code — voir `docs/MIGRATION_PROVENANCE.md`)
 - Analyse originale : voir `AGENT_TRAD_MAIN_BACKUP_20260921/11_B7_B8_B15_ANALYSIS.md` et `13_POST_B15_FREEZE.md` (source read-only, non dupliquée ici)

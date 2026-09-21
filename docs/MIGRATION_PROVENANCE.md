@@ -275,3 +275,80 @@ Authority impact: NONE
 **Statut F4 : DONE.**
 
 **Prochain verrou avant F5 (Governance Bridge)** : F5 doit brancher TradeIntent vers l'interface KX108 — mais docs/B15_STRUCTURAL_SCORE_BOUNDARY.md documente deja que le score structurel ne peut pas etre verifie contre le Kernel reel depuis ce repo (calcul delegue a un Kernel externe scelle). Avant de commencer F5, une decision utilisateur explicite est necessaire : (a) obtenir l'acces en lecture au Kernel X-108 reel pour verifier la formule, ou (b) accepter la version corrigee d'agent-trad-main (deja documentee comme reference locale, jamais autorite) comme signal canonique du domaine independamment du Kernel de production actuel. Sans cette decision, F5 risquerait de batir un "governance bridge" vers une formule dont le comportement reel cote Kernel reste inconnu.
+
+**Decision utilisateur recue (2026-09-21)** : option (b), avec regle stricte explicite — le score local est un signal/evidence, jamais une autorite ; KX108 reste la seule source du verdict ; fail-closed si KX108 indisponible/invalide. F5 execute cette regle ci-dessous.
+
+## F5 — Governance Bridge (2026-09-21)
+
+**Architecture implementee** (imposee par l'utilisateur, aucune deviation) :
+```
+Trading Domain (Agents/Simulation/Local signals)
+  -> Canonical DomainState + TradeIntent (ActionProposal, deja porte F2/F3)
+  -> Governance Bridge (NOUVEAU)
+  -> KX108 (KX108Client, interface — pas de vrai Kernel accessible)
+  -> Canonical Decision (Authority ACT/HOLD/BLOCK, deja porte F2)
+  -> Binder (execution/binder/engine.py, deja porte F3 — AUCUNE MODIFICATION)
+  -> Execution (market/adapters/alpaca, deja porte F2)
+```
+
+```
+Destination: governance/bridge/local_signal.py (NOUVEAU)
+Source: agent-trad-main
+Original path: agents/indicators.py (triangle_mean, asymmetry_penalty, structural_score), core/guard_x108.py (_build_coherence_matrix)
+Action: COPY_AS_IS (formule mathematique triangle_mean/asymmetry_penalty/structural_score, deja post-B15 Option C, identique caractere pour caractere) + ADAPT (build_coherence_matrix : meme algorithme, entree changee de l'ancien AgentVote.signal/.confidence du prototype 14-agents vers domain.proposal.AgentOutput.signal/.confidence du roster natif 17-agents deja porte en F3)
+Reason: seule formule structurelle corrigee (post-B15) de toute la genealogie ; necessaire comme evidence locale transportee, jamais comme autorite (voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md)
+Behavior changed: NO pour la formule (meme calcul) ; le type d'entree change (AgentOutput au lieu d'AgentVote du prototype) car c'est le seul roster porte dans ce repo
+Authority impact: NONE — LocalStructuralSignal.S n'est jamais lu par governance_bridge.py pour determiner Decision.authority, uniquement attache a Decision.structural_score (deja un champ existant de domain/receipt.py::Decision depuis F2)
+NOTE IMPORTANTE (correction d'une erreur de documentation F1) : docs/B15_STRUCTURAL_SCORE_BOUNDARY.md annoncait initialement ce fichier a native/indicators/structural_score.py — ce chemin n'a jamais ete cree en F2/F3/F4 (seuls legacy_indicators.py et native/agents/utils/indicators.py, qui ne portent PAS structural_score, l'ont ete). Le fichier reel est governance/bridge/local_signal.py, cree ici en F5 et non avant. Le document B15 a ete corrige en consequence.
+```
+
+```
+Destination: governance/bridge/kx108_client.py (NOUVEAU)
+Source: aucune — interface nouvelle, inspiree du contrat reel du core actuel
+Original path: N/A (contrat inspire de obsidia-x108-proofs_REMOTE_A5F21C6B/domains/trading/trading_x108_gate.py, lu en lecture seule, jamais copie)
+Action: REWRITE_SMALL
+Reason: aucun vrai Kernel X-108 n'est accessible depuis ce repo (fait acquis, pas re-verifie) ; un Protocol KX108Client + UnavailableKX108Client (comportement honnete par defaut) + doubles de test (StaticKX108Client, RaisingKX108Client) permettent de construire et tester le bridge sans jamais simuler un Kernel qui n'existe pas
+Behavior changed: N/A (nouveau code)
+Authority impact: NONE (UnavailableKX108Client leve systematiquement une exception, jamais un verdict invente)
+```
+
+```
+Destination: governance/bridge/ir_payload.py (NOUVEAU)
+Source: format de payload inspire de obsidia-x108-proofs_REMOTE_A5F21C6B/domains/trading/trading_x108_gate.py::translate_to_ir (lecture seule, core actuel, jamais modifie)
+Original path: N/A (schema domain/data:{T_mean,H_score,A_score,S}/meta reproduit a l'identique ; bloc "evidence" ajoute, absent de la source)
+Action: REWRITE_SMALL
+Reason: reutiliser le seul contrat KX108 connu et averti (celui du gate reel) plutot que d'en inventer un nouveau est le choix le plus honnete ; le bloc evidence (unknowns/contradictions/risk_flags/evidence_refs/portfolio_context) est un ajout additif, documente comme non consomme par la decision, pour respecter la regle de non-perte semantique (F3.5) jusque dans l'appel KX108 lui-meme
+Behavior changed: N/A (nouveau code, aucune source executable modifiee)
+Authority impact: NONE
+```
+
+```
+Destination: governance/bridge/governance_bridge.py (NOUVEAU)
+Source: aucune — nouveau code, implemente le Protocol AuthorityPort deja defini dans execution/binder/contracts.py (F3, non modifie)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: KX108GovernanceBridge.evaluate() est LE point d'injection dans CycleEngine (execution/binder/engine.py, parametre constructeur `authority: AuthorityPort`, ligne 262 : `self.authority.evaluate(proposal, state, decision_id)`) — aucune modification du moteur n'a ete necessaire, l'injection existait deja depuis F3
+Behavior changed: N/A (nouveau code) ; execution/binder/engine.py : AUCUNE MODIFICATION (0 ligne touchee)
+Authority impact: NONE — verifie explicitement par 7 tests obligatoires (voir tests/unit/test_governance_bridge.py) : score local eleve+BLOCK->pas d'execution, score local eleve+HOLD->pas d'execution, score local faible+ACT->Binder reste libre de refuser, KX108 indisponible->fail-closed HOLD, reponse invalide->fail-closed HOLD (5 variantes), aucun import direct domain/native/simulation->execution.binder, aucun import direct governance.bridge->broker/alpaca
+```
+
+**Resultat des tests F5** : `pytest tests/ -q` -> **71 passed, 1 skipped** (59 precedents + 12 nouveaux, meme skip documente depuis F2, aucune regression). Un test structurel (`test_no_direct_import_from_domain_or_agents_or_simulation_to_binder`) a d'abord echoue sur un faux positif : le docstring de `simulation/trading_world/__init__.py` (F4) mentionne la phrase "execution.binder" en prose pour documenter l'interdiction, ce qui declenchait une simple recherche de sous-chaine. Corrige en filtrant sur les lignes `import`/`from ... import` reelles, pas le contenu textuel complet — pas un defaut du code F4, un defaut du test lui-meme.
+
+**Chemins d'autorite prouves par les tests** :
+- `ActionProposal` (Domain/Agents/Simulation) ne peut atteindre `execution/binder` que via une instance de `AuthorityPort` injectee — aucun module de `domain/`, `native/agents/`, `simulation/` n'importe `execution.binder` directement (test structurel 6)
+- `governance/bridge/` ne peut atteindre le broker/Alpaca que via `Decision.authority` transmise au Binder deja existant — aucun import direct vers `market.adapters.alpaca` ni `execution.binder`, aucun appel `.submit()` (test structurel 7)
+- Le score structurel local ne peut jamais devenir une autorite : `Decision.authority` provient exclusivement de `response["verdict"]` du `KX108Client` ; `LocalStructuralSignal.S` n'alimente que `Decision.structural_score` (jamais lu par la logique de parsing d'autorite)
+
+**Comportements fail-closed garantis** :
+- `KX108Unavailable` ou toute exception inattendue levee par le client -> `Authority.HOLD`, `metrics["fail_closed"] = True`
+- Reponse KX108 sans cle `"verdict"`, verdict de type incorrect, valeur inconnue, ou reponse non-dict -> `Authority.HOLD`, `metrics["fail_closed"] = True` (5 variantes testees explicitement)
+- Dans les deux cas, `Decision.structural_score` reste renseigne (le signal local voyage jusqu'au receipt meme en cas d'echec KX108) mais ne determine jamais l'autorite retournee
+
+**Dette restante, honnetement signalee** :
+- `KX108Client` HTTP reel non implemente (hors scope F5 — aucun Kernel accessible pour le developper contre une vraie cible ; l'interface est prete, l'implementation concrete est un travail futur quand un acces reel existera)
+- Le bloc `evidence` de `ir_payload.py` est une extension du schema reel du core, non standardisee cote Kernel — si un vrai Kernel existe un jour et ignore ce bloc, aucune regression n'est attendue (additif, non consomme) ; s'il le rejette (schema strict), il faudra l'adapter
+- Aucun test d'integration bout-en-bout avec un `CycleEngine` complet instancie (le style de test suit celui deja etabli en F3 : reproduction fidele de la double barriere via `_broker_gate`, pas d'instanciation du moteur complet — coherent avec `test_governance_boundary.py`)
+
+**Statut F5 : DONE.**
+
+**Prochain verrou concret avant F6 (Execution/Binder reel avec Alpaca)** : F6 doit cabler un `CycleEngine` complet avec `KX108GovernanceBridge` (actuellement injectable mais jamais instancie dans un moteur reel dans ce repo), le roster natif via `NativeRosterAnalysisAdapter` (F3), et le broker Alpaca paper (F2) — en tranchant explicitement quel `KX108Client` est utilise par defaut (probablement `UnavailableKX108Client` tant qu'aucun Kernel reel n'existe, ce qui rendrait le systeme complet fail-closed par construction jusqu'a branchement d'un vrai Kernel — a confirmer avec l'utilisateur avant de commencer F6, car cela signifie qu'aucune execution paper n'est possible tant que ce choix n'est pas fait consciemment).
