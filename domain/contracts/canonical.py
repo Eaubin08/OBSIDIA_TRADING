@@ -32,7 +32,8 @@ Ce module fait deux choses :
 | RiskFlags                | `AgentOutput.risk_flags`                    | domain/proposal.py              |
 | Unknowns                 | `AgentOutput.unknowns`                      | domain/proposal.py              |
 | Contradictions           | `AgentOutput.contradictions`                | domain/proposal.py              |
-| Provenance               | `Provenance`                                | domain/types.py                 |
+| Provenance (fraicheur donnee marche) | `Provenance`                    | domain/types.py                 |
+| Provenance (origine du signal, F7.5) | `SourceProvenance` (`AgentOutput.source_provenance`) | domain/provenance.py |
 | Contexte temporel        | `Provenance.fetched_at` / `TradingDomainState.observed_at` | domain/types.py, domain/state.py |
 | Contexte portfolio       | `PortfolioState` / `ActionProposal.portfolio_context` | domain/portfolio.py, domain/proposal.py |
 | Contraintes d'execution  | `SizingDecision.capped_by` / `ExecutionPlan` | domain/proposal.py, domain/orders.py |
@@ -51,6 +52,7 @@ from dataclasses import dataclass, field
 from typing import Iterable, Optional, Sequence, Tuple
 
 from domain.proposal import ActionProposal, AgentOutput
+from domain.provenance import SourceProvenance
 from domain.receipt import CycleReceipt, Decision
 from domain.state import TradingDomainState
 
@@ -71,6 +73,7 @@ def to_canonical_agent_signal(
     risk_flags: Iterable[str] = (),
     evidence_refs: Iterable[str] = (),
     operational_metadata: Optional[dict] = None,
+    source_provenance: Optional[SourceProvenance] = None,
 ) -> CanonicalAgentSignal:
     """
     Point de convergence UNIQUE pour transformer n'importe quelle source de
@@ -79,6 +82,11 @@ def to_canonical_agent_signal(
 
     Regle absolue : `unknowns`, `contradictions` et `risk_flags` ne doivent
     jamais etre resumes, hashes ou tronques ici. Ils traversent tels quels.
+
+    F7.5 : `source_provenance` est optionnel ici (compatibilite historique
+    des appelants qui existaient avant F7.5), mais tout appelant natif ou
+    externe DEVRAIT le fournir — voir domain/provenance.py::for_native_agent
+    et ::for_external_signal.
     """
     return CanonicalAgentSignal(
         name=agent_id,
@@ -91,6 +99,7 @@ def to_canonical_agent_signal(
         risk_flags=tuple(risk_flags),
         evidence_refs=tuple(evidence_refs),
         inputs_digest=dict(operational_metadata or {}),
+        source_provenance=source_provenance,
     )
 
 

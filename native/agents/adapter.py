@@ -35,6 +35,7 @@ from typing import Dict, List, Optional, Sequence
 from domain.market import MarketSnapshot
 from domain.portfolio import PortfolioState
 from domain.proposal import AgentOutput
+from domain.provenance import SourceProvenance
 
 from native.agents.contracts import AgentVote, TradingState
 from native.agents.domains.trading_agents import (
@@ -106,6 +107,11 @@ def agent_vote_to_agent_output(vote: AgentVote) -> AgentOutput:
     `inputs_digest` ne porte plus que des metadonnees operationnelles
     (vote brut, layer, severity_hint) qui n'ont pas d'equivalent de premiere
     classe cote AgentOutput.
+
+    F7.5 : `source_provenance` est attache automatiquement ici
+    (`SourceProvenance.for_native_agent`) — c'est le SEUL endroit qui tague
+    un signal comme natif. Aucune valeur par defaut dispersee ailleurs dans
+    le code.
     """
     return AgentOutput(
         name=vote.agent_id,
@@ -117,6 +123,7 @@ def agent_vote_to_agent_output(vote: AgentVote) -> AgentOutput:
         contradictions=tuple(vote.contradictions),
         risk_flags=tuple(vote.risk_flags),
         evidence_refs=tuple(vote.evidence_refs),
+        source_provenance=SourceProvenance.for_native_agent(vote.agent_id),
         inputs_digest={
             "vote": vote.vote,
             "layer": vote.layer,

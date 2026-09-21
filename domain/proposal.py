@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
+from domain.provenance import SourceProvenance
 from domain.types import ActionKind, OrderType, Side
 
 # F3.5 - Canonical Domain Contract : ces quatre champs sont les invariants
@@ -49,6 +50,12 @@ class AgentOutput:
     de semantiquement important ne doit y etre range en exclusivite, car un
     "digest" peut legitimement etre resume/hashe plus tard sans que ce soit
     une regression.
+
+    F7.5 (Source Provenance Closure) : `source_provenance` (optionnel pour
+    compatibilite avec les receipts ecrits avant F7.5, voir
+    domain/provenance.py) porte D'OU VIENT ce signal — natif, externe,
+    humain, replay ou simulation. Ce champ ne modifie AUCUN comportement de
+    decision : voir domain/provenance.py pour la regle centrale.
     """
 
     name: str
@@ -61,6 +68,7 @@ class AgentOutput:
     risk_flags: CanonicalEvidence = field(default_factory=tuple)
     evidence_refs: CanonicalEvidence = field(default_factory=tuple)
     inputs_digest: Dict[str, Any] = field(default_factory=dict)
+    source_provenance: Optional[SourceProvenance] = None
 
     def as_dict(self) -> dict:
         return {
@@ -74,6 +82,9 @@ class AgentOutput:
             "risk_flags": list(self.risk_flags),
             "evidence_refs": list(self.evidence_refs),
             "inputs": self.inputs_digest,
+            "source_provenance": (
+                self.source_provenance.as_dict() if self.source_provenance else None
+            ),
         }
 
 

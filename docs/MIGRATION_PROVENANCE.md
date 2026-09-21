@@ -597,4 +597,110 @@ canonical.py) : un AgentOutput produit par une stack externe doit-il porter un c
 provenance distinct (ex: source_system) pour que le receipt puisse toujours repondre "cette
 observation venait du domaine natif ou d'un adapter externe", ou le contrat actuel suffit-il tel
 quel ? C'est une decision de conception a trancher avant d'ecrire external/normalization/, pas
-pendant.
+pendant. **-> traite en F7.5 ci-dessous.**
+
+## F7.5 — Source Provenance Closure (2026-09-21)
+
+```
+Destination: domain/provenance.py (NOUVEAU)
+Source: aucune - code nouveau, structure imposee par l'utilisateur
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: SourceProvenance (source_system/source_kind/source_id/adapter_id/organization_id/
+  original_event_id/observed_at/ingested_at) - structure extensible pour tracer natif/
+  externe/humain/replay/simulation, distincte de domain.types.Provenance (fraicheur donnee
+  marche, pas origine du signal). Regle centrale documentee et testee : la provenance ne
+  donne AUCUNE autorite, ni superieure ni inferieure.
+Behavior changed: NO (nouveau module, rien d'existant ne l'appelait avant cette phase)
+Authority impact: NONE
+```
+
+```
+Destination: domain/proposal.py::AgentOutput.source_provenance (champ ajoute)
+Source: extension du type existant (F3.5)
+Original path: domain/proposal.py
+Action: ADAPT (champ Optional[SourceProvenance] = None ajoute en fin de dataclass -
+  compatible avec tous les appels historiques F3-F7, aucun test existant modifie)
+Reason: faire porter la provenance d'origine par le type qui traverse deja tout le pipeline
+  (Source -> AgentOutput -> ActionProposal -> Decision -> CycleReceipt) sans creer de second
+  chemin de transport parallele.
+Behavior changed: NO (champ optionnel, defaut None, serialise dans as_dict())
+Authority impact: NONE
+```
+
+```
+Destination: domain/contracts/canonical.py::to_canonical_agent_signal (parametre ajoute)
+Source: extension du point de convergence F3.5
+Original path: domain/contracts/canonical.py
+Action: ADAPT (parametre source_provenance optionnel ajoute, table de correspondance mise a
+  jour pour distinguer Provenance/fraicheur de SourceProvenance/origine)
+Reason: le point de convergence unique doit pouvoir transporter la provenance pour TOUT futur
+  producteur (natif ou externe F8), sans dupliquer la logique de construction.
+Behavior changed: NO
+Authority impact: NONE
+```
+
+```
+Destination: native/agents/adapter.py::agent_vote_to_agent_output
+Source: adapter existant (F3)
+Original path: native/agents/adapter.py
+Action: ADAPT (source_provenance=SourceProvenance.for_native_agent(vote.agent_id) attache
+  automatiquement - SEUL endroit qui tague un signal comme natif, pas de valeur par defaut
+  dispersee ailleurs)
+Reason: compatibilite totale avec l'historique (tous les appels existants continuent de
+  fonctionner) tout en garantissant qu'aucun signal natif ne traverse desormais sans
+  provenance explicite.
+Behavior changed: NO (les 107 tests F1-F7 restent verts sans modification)
+Authority impact: NONE
+```
+
+```
+Destination: tests/unit/test_source_provenance.py (NOUVEAU, 13 tests)
+Source: cahier des charges utilisateur (10 tests obligatoires + 3 variantes parametrees)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: preuve des 10 scenarios demandes (native survit, externe survit, human jamais
+  converti, source_id+adapter_id conserves ensemble, replay preserve l'original ET
+  for_replay_of distingue une regeneration, absence = None jamais devine, provenance ne
+  change jamais Decision.authority (parametre sur ACT/HOLD/BLOCK), pas d'acces
+  Binder/Broker depuis domain/provenance.py, roundtrip JSONL bit a bit, schema_version
+  inchange + ancien format sans la cle relu sans erreur).
+Behavior changed: N/A (tests)
+Authority impact: NONE
+```
+
+**Choix de conception documente : PAS de bump de `RECEIPT_SCHEMA_VERSION`.** L'ajout de
+`source_provenance` est purement additif (champ optionnel, defaut `None`). Un receipt ecrit
+avant F7.5 (sans cette cle dans ses `agent_outputs`) reste lisible sans erreur
+(`dict.get("source_provenance")` renvoie `None` naturellement) - verifie explicitement par
+`test_receipt_schema_version_unchanged_and_old_format_still_readable`. `receipt_verify.py`
+continue de refuser toute version differente de `receipt.v1` (aucun assouplissement de cette
+regle F7).
+
+**Integration au Governance Bridge (F5) : AUCUNE modification necessaire.**
+`KX108GovernanceBridge.evaluate()` transmet `proposal` (donc `agent_outputs`, donc leur
+`source_provenance`) sans jamais le lire - la structure existante depuis F5 satisfaisait deja
+la regle "le Bridge ne doit jamais modifier silencieusement la provenance", simplement parce
+qu'il ne l'inspecte pas. Confirme par `test_source_provenance_never_changes_decision_authority`
+(parametre sur ACT/HOLD/BLOCK) : deux `AgentOutput` identiques sauf la provenance produisent
+exactement la meme `Authority`.
+
+**Replay (F7) : `replay_audit` preserve deja la provenance originale sans modification**, car il
+ne fait que recopier le dict brut stocke (`AuditReplayResult.proposed["agent_outputs"]`).
+`SourceProvenance.for_replay_of()` est fourni et teste unitairement, mais **n'est PAS branche
+dans `proof/receipts/replay.py`** - `replay_deterministic` ne regenere jamais d'`AgentOutput`,
+seulement une trajectoire de simulation (digest compare). Ce constructeur reste un point
+d'extension documente pour un futur mecanisme qui rejouerait activement des agents (dette
+consciente, pas un oubli).
+
+**Tests** : `pytest tests/ -q` -> **120 passed, 1 skipped** (13 nouveaux, zero regression sur
+les 107 precedents).
+
+**Dette restante** : aucun mecanisme technique n'empeche encore de construire un `AgentOutput`
+avec un `source_provenance` incoherent a la main (ex: `source_system=NATIVE` sur un signal en
+realite externe) - c'est une convention type-safe (enums `SourceSystem`/`SourceKind`) mais pas
+une garantie cryptographique. A renforcer si necessaire quand l'adapter externe (F8) devient le
+seul point d'entree reel pour des signaux tiers.
+
+**Statut F7.5 : DONE.** `pytest tests/ -q` integralement vert -> enchainement sur F8 autorise
+par la consigne utilisateur ("si et SEULEMENT SI... enchaine directement sur F8").
