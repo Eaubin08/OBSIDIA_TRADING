@@ -352,3 +352,96 @@ Authority impact: NONE — verifie explicitement par 7 tests obligatoires (voir 
 **Statut F5 : DONE.**
 
 **Prochain verrou concret avant F6 (Execution/Binder reel avec Alpaca)** : F6 doit cabler un `CycleEngine` complet avec `KX108GovernanceBridge` (actuellement injectable mais jamais instancie dans un moteur reel dans ce repo), le roster natif via `NativeRosterAnalysisAdapter` (F3), et le broker Alpaca paper (F2) — en tranchant explicitement quel `KX108Client` est utilise par defaut (probablement `UnavailableKX108Client` tant qu'aucun Kernel reel n'existe, ce qui rendrait le systeme complet fail-closed par construction jusqu'a branchement d'un vrai Kernel — a confirmer avec l'utilisateur avant de commencer F6, car cela signifie qu'aucune execution paper n'est possible tant que ce choix n'est pas fait consciemment).
+
+## F6 — Execution/Binder avec Alpaca PAPER ONLY (2026-09-21)
+
+```
+Destination: native/agents/aggregation.py (NOUVEAU)
+Source: aucune — code nouveau, inspire du pattern de agent-trad-main: obsidia/adapters/legacy_agents.py::LegacyAggregationAdapter (lu en reference, non copie car couple au vocabulaire AgentVote legacy)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: aucune implementation d'AggregationPort n'existait pour le roster natif a 17 agents (celle d'agent-trad-main etait couplee a son roster a 14 agents, volontairement non retenu — cf. section F3 ci-dessus). Reduction pure AgentOutput.signal/confidence -> Consensus, aucune autorite.
+Behavior changed: N/A (nouveau code)
+Authority impact: NONE (agregation de votes, jamais une decision)
+```
+
+```
+Destination: execution/binder/order_ledger_jsonl.py
+Source: agent-trad-main
+Original path: obsidia/adapters/jsonl_order_ledger.py
+Action: COPY_AS_IS (imports reecrits obsidia.domain.* -> domain.*)
+Reason: seule implementation disponible d'OrderLedgerPort ; pure persistance append-only avec garde anti-doublon (submission_blocker) — exactement le mecanisme d'idempotence demande par l'utilisateur (test #8), aucune logique de decision
+Behavior changed: NO
+Authority impact: NONE
+```
+
+```
+Destination: execution/binder/paper_execution.py (NOUVEAU — point d'assemblage F6)
+Source: aucune — code nouveau, assemble des pieces existantes (F2 Alpaca, F3 Binder/roster, F5 Governance Bridge)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: aucun point d'assemblage production ne cablait encore Bridge -> Binder -> Alpaca. Ce module NE RECREE PAS le Runtime Binder central (il utilise execution/binder/engine.py tel quel) ; il ajoute uniquement `require_paper_mode` (refus structurel de Mode.LIVE, leve LiveModeRejected AVANT toute construction de broker) et `build_paper_cycle_engine` (factory). Le parametre `kx108_client` est obligatoire, sans valeur par defaut — impossible de charger un client par accident.
+Behavior changed: N/A (nouveau code, aucune source ne faisait deja cet assemblage)
+Authority impact: NONE (assemble des ports, ne decide rien lui-meme ; l'autorite reste exclusivement dans KX108GovernanceBridge)
+```
+
+```
+Destination: tests/test_support/kx108_fixtures.py (NOUVEAU — namespace isole)
+Source: aucune — code nouveau, en reaction explicite a la demande utilisateur de durcir l'isolation par rapport aux doubles de test deja presents dans governance/bridge/kx108_client.py (StaticKX108Client/RaisingKX108Client, F5, non deplaces — hors scope F6, restent utilisables par tests/unit/test_governance_bridge.py)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: l'utilisateur exige qu'un client de test soit "impossible a confondre avec le vrai KX108" : nom explicite (FixtureKX108Client), docstring TEST-ONLY/NON-PRODUCTION, RuntimeWarning a l'instanciation, emplacement exclusivement sous tests/, aucune reference production nulle part (verifie par test_fixture_client_not_loadable_from_production_config)
+Behavior changed: N/A (nouveau code, tests uniquement)
+Authority impact: NONE (verdict fixe fourni par l'appelant du test, zero logique metier)
+```
+
+```
+Destination: tests/integration/test_paper_execution_pipeline.py (NOUVEAU)
+Source: aucune — 12 tests nouveaux
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: exercice du CycleEngine reel (F3) + KX108GovernanceBridge reel (F5) avec un broker Alpaca FAKE (spy, pas de reseau) et FixtureKX108Client (TEST-ONLY). Choix documente : l'analyse/strategie/dimensionnement sont des doubles deterministes plutot que le roster natif complet, pour isoler ce qui est teste ici (le cablage de gouvernance et d'execution) de ce qui l'est deja ailleurs (tests/unit/test_native_roster.py pour les agents, tests/unit/test_alpaca_providers.py pour le HTTP Alpaca)
+Behavior changed: N/A (tests uniquement)
+Authority impact: NONE
+```
+
+**Resultat des tests F6** : `pytest tests/ -q` -> **83 passed, 1 skipped** (71 precedents + 12 nouveaux, meme skip documente depuis F2, **aucune regression**).
+
+**Chemin exact Bridge -> Binder -> Alpaca** :
+`execution/binder/paper_execution.py::build_paper_cycle_engine` construit un `CycleEngine` (execution/binder/engine.py, F3) avec `authority=KX108GovernanceBridge(kx108_client)` (F5) et `broker=AlpacaBroker(...)` (F2, force `mode=config.mode` apres `require_paper_mode`). A l'interieur du cycle : `CycleEngine.run_cycle()` appelle `self.authority.evaluate(proposal, state, decision_id)` (Bridge, produit `Decision.authority`) -> `self._plan(decision, state, note)` (ExecutionPlanner, F3, premiere barriere : refuse si `not decision.authorizes_action`) -> `self._execute(cycle_id, decision, plan, note)` (deuxieme barriere : revalide `decision.authorizes_action` et `plan.is_authorized`, verifie `order_ledger.submission_blocker(plan)` pour l'idempotence, PUIS SEULEMENT `self.broker.submit(plan)`).
+
+**Protections Binder (empechent un ACT du bridge de devenir une execution automatique)** :
+1. `ExecutionPlanner.plan()` retourne `None` si l'autorite n'est pas ACT, si l'action n'est pas irreversible, si la quantite est nulle, ou si `state.can_support_irreversible_action(symbol)` est faux (compte bloque, marche ferme, prix invalide, qualite de donnee insuffisante)
+2. `CycleEngine._execute()` revalide independamment `decision.authorizes_action and plan.is_authorized` avant tout appel broker — meme un plan mal construit ne passerait pas
+3. `AlpacaBroker.submit()` leve lui-meme `UnauthorizedExecution` si `plan.is_authorized` est faux — troisieme verification independante, au plus pres du reseau
+
+**Protections paper/live** :
+- `require_paper_mode(config)` leve `LiveModeRejected` si `config.mode is not Mode.PAPER`, appele en tout premier dans `build_paper_cycle_engine` — AVANT la construction du `AlpacaHTTPClient`/`AlpacaBroker` : aucune connexion, meme en lecture, ne peut avoir lieu vers un compte live via ce point d'assemblage
+- Aucun fallback : si la config est live ou ambigue (valeur `ALPACA_MODE` invalide), `AlpacaConfig.from_env()` (F2) leve deja `AlpacaConfigurationError` avant meme d'atteindre `require_paper_mode`
+- Test dedie : `test_require_paper_mode_rejects_live_configuration`
+
+**Tests — PASS/FAIL exact pour les 10 scenarios demandes** :
+1. BLOCK -> aucune execution : PASS (`test_block_or_hold_verdict_never_reaches_broker[BLOCK]`)
+2. HOLD -> aucune execution : PASS (`test_block_or_hold_verdict_never_reaches_broker[HOLD]`)
+3. ACT + Binder refuse (etat degrade) -> aucune execution : PASS (`test_act_verdict_with_degraded_state_still_refuses_execution`)
+4. ACT + Binder autorise -> ordre PAPER : PASS (`test_act_verdict_with_supported_state_submits_paper_order_only`)
+5. Tentative LIVE -> refus : PASS (`test_require_paper_mode_rejects_live_configuration` + `test_require_paper_mode_accepts_paper_configuration` pour le cas positif)
+6. Permission/compte invalide -> refus : PASS (`test_broker_permission_denied_blocks_before_submission`)
+7. Erreur Alpaca a la soumission -> echec explicite, jamais faux succes : PASS (`test_alpaca_submission_error_produces_explicit_failure_never_false_success`)
+8. Double soumission -> idempotence : PASS (`test_duplicate_execution_plan_is_blocked_by_order_ledger`)
+9. Provenance KX108 conservee jusqu'au receipt : PASS (`test_kx108_verdict_provenance_survives_to_receipt`)
+10. Aucun agent/simulation/adapter -> Alpaca directement : PASS (`test_no_direct_import_of_alpaca_outside_execution_assembly_point`)
+
+Plus un 11e test explicitement demande : `test_fixture_client_not_loadable_from_production_config` — PASS.
+
+**Receipts/resultats produits** : `CycleOutcome.receipt` (domain/receipt.py::CycleReceipt, deja existant depuis F2) est produit pour CHAQUE cycle quel que soit le verdict (ACT/HOLD/BLOCK), conformement a l'invariant deja garanti par `engine.py` (F3). `receipt.as_dict()["decision"]["metrics"]["kx108_response"]` porte la source exacte du verdict (`"FixtureKX108Client (TEST-ONLY)"` en test, `"KX108_BRIDGE"` en production reelle via le `reason` de la Decision). Structure suffisante pour F7 (le vrai receipt chaine SHA-256 existe deja, F6 ne fait qu'alimenter son contenu).
+
+**Dette restante, honnetement signalee** :
+- Aucun test d'integration n'exerce le vrai roster natif de 17 agents dans ce pipeline (choix deliberé, deja justifie ci-dessus) — un test complementaire natif-roster + paper Alpaca serait utile mais n'etait pas dans le perimetre strict F6 demande
+- `NativeRosterAggregation` (nouveau) n'est pas exercee directement par les tests F6 (les tests utilisent `FakeAggregation`) — elle est neuve et non testee unitairement a ce stade ; a couvrir avant de la considerer prete pour une execution reelle
+- `execution/binder/order_ledger_jsonl.py` est teste uniquement pour son role d'idempotence dans ce fichier (test #8) ; `verify_integrity()` et la detection de corruption ne sont pas exercees ici (deja testees implicitement par la source d'origine, non re-verifiees dans ce repo)
+- Aucun `KX108Client` HTTP reel n'existe toujours (attendu, documente depuis F5)
+
+**Statut F6 : DONE.**
+
+**Prochain verrou concret avant F7 (Proof/Replay)** : le receipt actuel (`CycleReceipt`) est deja chaine (F2, `previous_receipt_hash`/`decision_hash()`) mais aucun mecanisme de PERSISTANCE durable de la chaine n'existe encore dans ce repo (le port `proof` de `CycleEngine` est optionnel et jamais implemente ici) — F7 doit decider ou et comment stocker durablement la chaine de receipts (fichier JSONL comme l'order ledger ? autre ?), et si le rejeu deterministe (`FrozenClock`/`FixedClock`, deja portes) doit etre exerce contre cette chaine stockee pour prouver qu'un rejeu produit exactement le meme hash.
