@@ -1190,3 +1190,84 @@ canonicalisation partage par Native et External avant la gouvernance ?"*
 **OUI.**
 
 F1 -> F8.7 = CANONICAL ARCHITECTURE CLOSED
+
+## F9 — Cockpit/Demo (2026-09-21)
+
+Objectif : rendre OBSERVABLE la stack F1->F8.7 deja prouvee. Aucune nouvelle
+autorite, aucune nouvelle logique metier fondamentale. Le Cockpit est une
+PROJECTION du runtime reel, pas un moteur parallele.
+
+### Audit prealable (etape 0)
+- `apps/{cockpit,demo,naive_vs_governed}/` (F1) etaient vides.
+- Le clone `Obsidia-lab-trad/os4-platform/client/src/pages/TradingWorld.tsx`
+  a servi d'INSPIRATION DE LAYOUT uniquement (sections Input/Domain
+  State/Agents/Simulation/Intent/Governance/KX108/Binder/Execution/Receipt/
+  Replay) -- aucun code React/tRPC importe.
+- MVP-obsidia- (Streamlit, deja audite) a confirme que Streamlit est le seul
+  pattern UI verifie fonctionnel dans la genealogie, coherent avec un repo
+  100% Python -- **choix retenu** pour app.py. Rejete : reimporter le mode
+  Guide/Expert du MVP tel quel (hors scope F9, pas demande).
+
+### Fichiers crees
+- `apps/__init__.py`, `apps/cockpit/__init__.py`
+- `apps/cockpit/demo_doubles.py` -- doubles PAPER-only deterministes (memes
+  formes que les doubles F8.5/F8.6, pas une nouvelle brique metier)
+- `apps/cockpit/scenarios.py` -- catalogue des 7 scenarios executables +
+  `replay_previous_cycle` (scenario 8), assemble uniquement des composants
+  DEJA PROUVES (`CycleEngine` F3/F6, `KX108GovernanceBridge` F5,
+  `NativeRosterAnalysisAdapter`/`ExternalStackAnalysisAdapter` F3.5/F8,
+  `ExecutionPlanner` F6, `ReceiptStore`/`ReplayEngine` F7,
+  `FixtureKX108Client` TEST-ONLY)
+- `apps/cockpit/presenter.py` -- assemble les 11 sections d'affichage a
+  partir de `CycleOutcome`/`ReceiptStore` reels, ne recalcule jamais un
+  verdict/permission/resultat
+- `apps/cockpit/app.py` -- rendu Streamlit fin, appelle uniquement
+  scenarios.py/presenter.py
+- `tests/unit/test_cockpit.py` (11 tests)
+- `requirements.txt` (+`streamlit>=1.38.0`)
+
+### Choix de conception notable : `_DeferredSimulationProof`
+Proxy minimal du Protocol `ProofPort` (`last_hash`/`record`) dans
+scenarios.py, permettant d'attacher la simulation F4 comme Evidence AVANT
+persistance (meme contrainte que F8.5 scenario 1) SANS casser la continuite
+de la chaine partagee entre scenarios successifs du Cockpit (contrairement a
+F8.5 qui isolait chaque scenario dans son propre `tmp_path`). Ce n'est PAS un
+nouveau mecanisme de preuve : `record()` est un no-op, la persistance reelle
+reste `store.record(receipt)`, appele explicitement par `run_scenario`.
+
+### Tests F9 (11/11 PASS)
+1. Aucune assignation `Authority.ACT/HOLD/BLOCK` dans apps/cockpit/*.py (AST)
+2. Vue affichee == `decision.authority` exact (pas de recalcul)
+3. Aucun import direct `market.adapters.alpaca`/`execution.binder.paper_execution`
+   dans apps/cockpit/*.py
+4. BLOCK -> aucune execution declenchee par le Cockpit
+5. Native et External produisent le meme type de `Decision` via le meme Bridge
+6. Aucune construction `Mode.LIVE` dans le catalogue + `require_paper_mode` leve toujours
+7. Replay (scenario 8) : `MATCH` reproductible, zero appel broker
+8. Receipt affiche == receipt reellement persiste (hash/schema/raw identiques)
+9. Erreur broker jamais affichee comme succes (`consequence.executed=False`)
+10. Les 7 scenarios catalogues s'executent tous reellement sans crash
+11. Scenario "ACT + Binder refuse" : Decision != Permission visible dans la vue
+
+### Suite complete
+`pytest tests/ -q` -> **168 passed, 1 skipped** (157 + 11, zero regression).
+
+### Dette restante honnetement signalee
+- app.py (rendu Streamlit) n'est pas teste automatiquement -- seule la
+  couche donnees (scenarios.py/presenter.py) l'est, choix assume et documente.
+- Le store du Cockpit est cree dans un dossier temporaire par session
+  Streamlit (`tempfile.mkdtemp`) -- pas de persistance entre lancements de
+  l'app, coherent avec "PAPER ONLY / demo", pas un choix de production.
+- `_DeferredSimulationProof` est specifique au Cockpit (pas reutilise
+  ailleurs) -- juge acceptable car il n'introduit aucune nouvelle semantique
+  de preuve, seulement un sequencement different de persistance deja prouve.
+
+### Statut F1->F9 : DONE.
+
+### Prochain verrou avant F10 (Regression/Freeze)
+Aucun test de non-regression historique multi-generations (MVP-obsidia-,
+TradingWorld, ERC-8004, Obsidia-lab-trad) n'a encore ete rejoue contre le
+nouveau moteur unifie -- F10 doit decider quel sous-ensemble de comportements
+historiques merite un test de parite avant de figer une baseline, et si le
+`merkle_seal.json` dedie a OBSIDIA_TRADING doit etre cree a ce stade ou
+reporte.
