@@ -229,4 +229,49 @@ Authority impact: NONE
 
 **Dette restante, honnetement signalee** : la table de correspondance dans `domain/contracts/canonical.py` documente `TradeProposal = Opportunity + StrategyCandidate` et `TradeIntent = ActionProposal`, mais aucun renommage n'a ete fait dans le code — ce sont des alias documentaires, pas des types renommes. Un futur adapter externe (F8) devra utiliser `to_canonical_agent_signal` par convention ; rien dans le code n'empeche aujourd'hui de construire un `AgentOutput` a la main en contournant ce point de convergence (pas de verification runtime). A renforcer si necessaire quand l'adapter externe existera reellement.
 
-<!-- F4 ci-dessous -->
+## F4 — Simulation (2026-09-21)
+
+```
+Destination: simulation/monte_carlo/bootstrap.py
+Source: MVP-obsidia- (clone temporaire, non permanent)
+Original path: src/simulation/sim_lite.py (fonctions sim_lite_bootstrap, max_drawdown_from_returns)
+Action: EXTRACT_PATTERN_ONLY (logique portee fidelement, dataset factice BTC_1h.csv NON porte — le module accepte n'importe quelle serie de retours numpy reelle)
+Reason: seul bootstrap Monte Carlo reel confirme par l'audit (pas de mock), hypothese-free (rien de parametrique, reechantillonne l'historique tel quel)
+Behavior changed: NO pour la logique de calcul (formules identiques) ; ADAPT mineur = parametre `seed` optionnel ajoute (source originale utilisait np.random global non seede) pour permettre la reproductibilite quand elle est demandee
+Authority impact: NONE (produit des metriques statistiques, ne decide et n'execute rien)
+```
+
+```
+Destination: simulation/trading_world/{rng.py, market_process.py, risk_metrics.py}
+Source: Obsidia-lab-trad (clone temporaire, non permanent)
+Original path: os4-platform/server/engines/tradingEngine.ts (223 lignes, verifie ligne par ligne par audit prealable — 9/9 modeles confirmes reels, aucun factice)
+Action: REWRITE_SMALL (reecriture Python fidele, PAS un portage TypeScript->Python litteral ; formules mathematiques identiques, structure de donnees adaptee — dataclasses au lieu d'interfaces TS)
+Reason: seul moteur de simulation parametrique confirme par lecture de code (GBM regime-dependant + Markov + GARCH(1,1) + jump diffusion de Merton + VaR/ES/Sharpe/MaxDrawdown + PRNG seede)
+Behavior changed: NON pour les formules (portees terme a terme, citees en commentaire dans chaque fonction) ; le PRNG mulberry32 a ete reimplemente en arithmetique 32 bits non signee Python plutot que remplace par random.Random/numpy.default_rng — la consigne n'exigeait pas la fidelite bit-a-bit mais elle etait peu couteuse a obtenir (8 lignes) et evite d'introduire une 3e famille de PRNG dans l'ecosysteme ; garantie de determinisme (meme seed -> meme sequence exacte) verifiee par test, pas supposee
+Authority impact: NONE (produit une trajectoire de prix simulee et des metriques, ne decide et n'execute rien — verifie par absence d'import vers execution.binder/market.adapters.alpaca dans tout le module)
+```
+
+**AVERTISSEMENT explicitement documente et repris tel quel de la source** : `build_regime_matrix` (simulation/trading_world/market_process.py) genere une matrice de transition de Markov a partir du seed, PAS calibree sur des donnees de marche reelles (meme limite que la source TS — l'audit prealable l'avait deja signalee). Docstring du module + present rapport = double documentation intentionnelle.
+
+**Comparaison Monte Carlo (MVP) vs TradingWorld engine — decision documentee** :
+- `simulation/monte_carlo/bootstrap.py` (MVP) : **hypothese-free**, reechantillonne une serie de retours REELLE fournie en entree — pas de modele de marche suppose, juste l'historique lui-meme.
+- `simulation/trading_world/` (Obsidia-lab-trad) : **parametrique**, genere des trajectoires SYNTHETIQUES a partir d'hypotheses de modele (GBM+regimes+GARCH+jumps) — utile pour des scenarios "et si" (stress test, absence de donnees historiques suffisantes, calibration de seuils avant d'avoir un historique reel).
+- **Decision** : les deux sont **COMPLEMENTAIRES**, pas redondants — aucun n'est designe "moteur principal" au detriment de l'autre. `monte_carlo/` est le choix par defaut des qu'un historique de marche reel est disponible (ex: donnees Alpaca deja portees en F2). `trading_world/` est le choix pour un stress test parametrique controle (flash crash simule, regime de marche hypothetique) ou en l'absence de donnees historiques suffisantes. Les deux alimentent le domaine/la preuve en scenarios et metriques, jamais l'execution directement.
+
+```
+Destination: tests/unit/{test_market_process.py, test_monte_carlo_bootstrap.py}
+Source: nouveaux tests
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: couverture explicite exigee — un test par modele (GBM, GARCH, jumps, Markov), cas de calcul exacts connus a la main pour VaR/ES/Sharpe/MaxDrawdown/Merkle, et 4 tests de determinisme (meme seed -> sequence identique stricte, seed different -> sequence differente, PRNG et Box-Muller reproductibles isolement)
+Behavior changed: N/A
+Authority impact: NONE
+```
+
+**Resultat des tests F4** : `pytest tests/ -q` -> **59 passed, 1 skipped** (29 precedents + 30 nouveaux, meme skip documente depuis F2, aucune regression). Un echec initial (`test_garch_reacts_to_volatility_shock`) etait un bug dans l'hypothese du test lui-meme (l'etat initial suppose etait faux — le moteur applique bien la mise a jour GARCH des t=0, fidele a la source), corrige avant ce rapport, pas dans le moteur porte.
+
+**Differences avec les versions historiques** : requirements.txt enrichi de `numpy>=1.26.0` (necessaire pour le bootstrap, absent jusqu'ici). Aucune autre dependance nouvelle. Aucun acces broker ni capacite de decision dans simulation/ — verifie par grep, aucun import vers execution.binder ou market.adapters.alpaca.
+
+**Statut F4 : DONE.**
+
+**Prochain verrou avant F5 (Governance Bridge)** : F5 doit brancher TradeIntent vers l'interface KX108 — mais docs/B15_STRUCTURAL_SCORE_BOUNDARY.md documente deja que le score structurel ne peut pas etre verifie contre le Kernel reel depuis ce repo (calcul delegue a un Kernel externe scelle). Avant de commencer F5, une decision utilisateur explicite est necessaire : (a) obtenir l'acces en lecture au Kernel X-108 reel pour verifier la formule, ou (b) accepter la version corrigee d'agent-trad-main (deja documentee comme reference locale, jamais autorite) comme signal canonique du domaine independamment du Kernel de production actuel. Sans cette decision, F5 risquerait de batir un "governance bridge" vers une formule dont le comportement reel cote Kernel reste inconnu.
