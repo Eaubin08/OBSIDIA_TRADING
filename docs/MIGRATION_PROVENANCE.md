@@ -704,3 +704,119 @@ seul point d'entree reel pour des signaux tiers.
 
 **Statut F7.5 : DONE.** `pytest tests/ -q` integralement vert -> enchainement sur F8 autorise
 par la consigne utilisateur ("si et SEULEMENT SI... enchaine directement sur F8").
+
+## F8 — External Stack Adapter (2026-09-21)
+
+```
+Destination: external/contracts/external_signal.py (NOUVEAU)
+Source: aucune - code nouveau
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: ExternalSignal - format d'entree generique et volontairement pauvre qu'une stack
+  tierce doit fournir (source_id/organization_id/signal/confidence/rationale obligatoires,
+  unknowns/contradictions/risk_flags/evidence_refs optionnels). `from_raw_payload` est
+  l'etape VALIDATION du diagramme F8 : rejette (InvalidExternalSignal) tout champ
+  obligatoire manquant/vide/mal type, sans jamais deviner une valeur.
+Behavior changed: NO (nouveau module)
+Authority impact: NONE
+```
+
+```
+Destination: external/normalization/normalizer.py (NOUVEAU)
+Source: reutilise domain/contracts/canonical.py::to_canonical_agent_signal (F3.5/F7.5)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: traduit ExternalSignal -> CanonicalAgentSignal via le MEME point de convergence
+  que le chemin natif (native/agents/adapter.py) - aucun second chemin de gouvernance.
+  Preserve la provenance (source_system=external TOUJOURS, jamais reecrit) et les
+  unknowns/contradictions/risk_flags sans inference : absents du signal externe, ils
+  restent des tuples vides (documente comme "non rapporte", pas "verifie absent").
+Behavior changed: NO
+Authority impact: NONE - ne vote pas, ne decide jamais, aucun import governance.bridge
+```
+
+```
+Destination: external/adapters/base_adapter.py (NOUVEAU)
+Source: calque sur native/agents/adapter.py::NativeRosterAnalysisAdapter (F3)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: `ExternalStackAdapter` (Protocol, point d'extension pour une future integration
+  reelle) + `ExternalStackAnalysisAdapter` (implemente AnalysisPort exactement comme le
+  roster natif - branchable dans CycleEngine sans AUCUNE modification du moteur, du
+  Governance Bridge ou de KX108). C'est la preuve structurelle qu'aucune deuxieme
+  architecture metier n'est creee.
+Behavior changed: NO
+Authority impact: NONE - aucun import execution.binder ni market.adapters.alpaca
+```
+
+```
+Destination: external/examples/brother_stack/example_adapter.py (NOUVEAU)
+Source: fixture pedagogique, aucune vraie integration
+Original path: N/A
+Action: KEEP_REFERENCE_ONLY (explicitement marque comme exemple, pas une integration reelle
+  du projet du frere de l'utilisateur - conforme a la demande initiale "pas besoin
+  d'integrer reellement le projet de mon frere maintenant")
+Reason: demontrer la forme attendue d'un adapter concret sans dependance reseau/donnee reelle
+Behavior changed: N/A
+Authority impact: NONE
+```
+
+```
+Destination: tests/unit/test_external_adapter.py (NOUVEAU, 12 tests)
+Source: cahier des charges utilisateur (7 tests obligatoires + 5 variantes de robustesse)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: preuve des 7 scenarios demandes (signal valide normalise avec provenance externe,
+  champs manquants rejetes explicitement (parametre sur les 5 champs obligatoires +
+  confidence non-numerique), meme Governance Bridge produit la meme forme de Decision pour
+  natif et externe, aucun import Binder/Broker dans external/, normalizer n'importe jamais
+  governance.bridge, unknowns/contradictions/risk_flags survivent, organization_id+
+  adapter_id+source_id tous conserves bout-en-bout jusqu'au receipt).
+Behavior changed: N/A (tests)
+Authority impact: NONE
+```
+
+**Regles non negociables verifiees par test (pas seulement documentees)** :
+- Adapter != Agent Authority : le normalizer traduit, ne vote jamais lui-meme (aucune
+  logique de decision dans normalize_external_signal, juste une transcription 1:1 des
+  champs du signal externe).
+- Adapter != Governance : `test_normalizer_and_adapters_never_import_governance_bridge`
+  (aucun import `governance.bridge` dans `external/contracts/`, `external/normalization/`,
+  `external/adapters/`).
+- Adapter != KX108 : ne produit jamais de verdict Authority - seul `to_canonical_agent_signal`
+  produit un `AgentOutput` (signal), jamais une `Decision`.
+- Adapter != Binder / Execution : `test_external_package_has_no_binder_or_broker_import`
+  (scan ligne par ligne des vrais imports, pas des mentions en docstring, dans tout `external/`).
+
+**Meme chemin de gouvernance, pas de duplication** : `test_normalized_external_signal_
+produces_decision_via_same_bridge_as_native` instancie UN SEUL `KX108GovernanceBridge` et lui
+soumet successivement un signal natif et un signal externe normalise - meme type de retour,
+meme `Authority` pour la meme confiance/verdict KX108. Aucune branche de code specifique a
+"external" n'existe dans la gouvernance elle-meme.
+
+**Tests** : `pytest tests/ -q` -> **132 passed, 1 skipped** (12 nouveaux, zero regression sur
+les 120 precedents).
+
+**Dette restante** :
+1. `unknowns`/`contradictions`/`risk_flags` absents d'un `ExternalSignal` restent des tuples
+   vides - ambiguite documentee (non-rapporte vs verifie-absent) mais non resolue au niveau
+   du type (pas de marqueur "non fourni" distinct de "liste vide"). Meme limite deja notee en
+   F7.5 pour la coherence generale de `source_provenance`.
+2. `ExternalStackAdapter` (Protocol) n'a aucune garantie technique empechant un futur adapter
+   concret d'appeler un service externe avec des effets de bord depuis `fetch_signals` (ex:
+   modifier un etat cote stack tierce) - la doctrine "observe seulement" est une convention
+   documentee, pas verifiee par le type system.
+3. Aucune vraie integration (brother_stack ou entreprise) n'existe : `ExampleBrotherStackAdapter`
+   est explicitement une fixture, pas un branchement reel.
+
+**Statut F1->F8 : DONE.**
+
+**Prochain verrou concret avant F9 (Demo/Cockpit)** : F4 (simulation) et F8 (external adapter)
+restent tous deux non cables dans le pipeline `CycleEngine` reel en meme temps que F6/F7 -
+`ExternalStackAnalysisAdapter` a ete verifie isolement (tests unitaires) mais aucun scenario
+n'exerce encore "signal externe -> Governance Bridge -> Binder -> Alpaca paper -> Receipt avec
+extension f7_simulation" en un seul cycle bout-en-bout. Avant F9 (qui doit pouvoir montrer un
+Cockpit demo), il faut decider si ce cablage integral complet est un prerequis demonstratif ou
+si F9 peut se contenter d'assembler les pieces deja prouvees separement (F2 Alpaca, F4
+simulation, F6 execution, F7 proof, F7.5 provenance, F8 external) sans un test d'integration
+unique qui les exerce toutes ensemble.
