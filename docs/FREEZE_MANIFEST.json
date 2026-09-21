@@ -1,32 +1,32 @@
 {
-  "project": "OBSIDIA_TRADING",
-  "freeze_version": "v0.1",
-  "git_commit": "PENDING_FREEZE_COMMIT",
-  "timestamp": "PENDING",
-  "test_count": 168,
-  "skipped_count": 1,
   "architecture_status": "CLOSED",
-  "native_path_status": "PASS",
-  "external_path_status": "PASS",
   "canonical_contract_version": "canonical.v1",
-  "receipt_schema_version": "receipt.v1",
-  "proof_policy": "PROOF_BEST_EFFORT",
-  "paper_only_status": "ENFORCED",
-  "kx108_status": "NO_REAL_KERNEL_CONNECTED",
+  "external_path_status": "PASS",
+  "freeze_version": "v0.1",
+  "git_commit": "e6ae249c35c017dc78445f7020f8951b161f4316",
+  "known_boundaries": [
+    "Le score structurel local (native/agents ou governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) est un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
+    "Ce freeze ne prouve rien sur le comportement du Kernel X-108 de production (scelle, externe, jamais accede depuis ce repo).",
+    "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia) \u2014 voir docs/SEAL_SCOPE.md pour le perimetre exact du merkle_seal.json dedie a ce repo.",
+    "Aucun remote git n'est configure pour ce repo ; aucun push n'a ete effectue a aucune etape de F1 a F10."
+  ],
   "known_debts": [
     "Aucun vrai Kernel X-108 branche dans ce repo : FixtureKX108Client est TEST-ONLY (tests/test_support/), le comportement de production par defaut est UnavailableKX108Client, fail-closed (Authority.HOLD sur indisponibilite ou reponse invalide).",
     "Alpaca live structurellement interdit (require_paper_mode leve LiveModeRejected avant toute connexion) ; aucune cle live presente dans le repo.",
     "Politique de preuve actuelle = PROOF_BEST_EFFORT : un echec d'ecriture du receipt (proof.record) est journalise (note()) mais n'interrompt pas le cycle (execution/binder/engine.py, bloc try/except autour de proof.record). PROOF_REQUIRED est documente comme politique cible pour le chemin gouverne critique mais n'est pas active.",
     "Matrice de regimes de Markov (simulation/trading_world/market_process.py::build_regime_matrix) NON CALIBREE sur donnees reelles ; auto-transition favorisee artificiellement par construction, heritage assume de la source TradingWorld (tradingEngine.ts).",
     "Rendu visuel Streamlit du Cockpit (apps/cockpit/app.py) non teste automatiquement ; seule la couche donnees (apps/cockpit/presenter.py, scenarios.py) est couverte par pytest.",
-    "Le store de receipts du Cockpit est temporaire par session (aucune persistance entre lancements) — coherent avec un usage demo/PAPER, pas un journal de production.",
+    "Le store de receipts du Cockpit est temporaire par session (aucune persistance entre lancements) \u2014 coherent avec un usage demo/PAPER, pas un journal de production.",
     "Concept 'Naive vs Governed' (MVP-obsidia-) jamais implemente : apps/naive_vs_governed/ reste vide. Statut MISSING confirme par F10.1, pas une regression (jamais construit, donc rien perdu depuis l'etat precedent de ce repo).",
     "Packs de tests formels du Kernel (MVP-obsidia-, ex: test_absolute_hold_gate, test_non_invertible_order) NOT_PORTABLE : ils testent des invariants du Kernel X-108 reel, externe et scelle, hors perimetre inspectable depuis ce repo."
   ],
-  "known_boundaries": [
-    "Le score structurel local (native/agents ou governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) est un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
-    "Ce freeze ne prouve rien sur le comportement du Kernel X-108 de production (scelle, externe, jamais accede depuis ce repo).",
-    "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia) — voir docs/SEAL_SCOPE.md pour le perimetre exact du merkle_seal.json dedie a ce repo.",
-    "Aucun remote git n'est configure pour ce repo ; aucun push n'a ete effectue a aucune etape de F1 a F10."
-  ]
+  "kx108_status": "NO_REAL_KERNEL_CONNECTED",
+  "native_path_status": "PASS",
+  "paper_only_status": "ENFORCED",
+  "project": "OBSIDIA_TRADING",
+  "proof_policy": "PROOF_BEST_EFFORT",
+  "receipt_schema_version": "receipt.v1",
+  "skipped_count": 1,
+  "test_count": 168,
+  "timestamp": "2026-09-21T20:36:34.460911+00:00"
 }

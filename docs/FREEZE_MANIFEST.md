@@ -6,7 +6,7 @@ Résumé lisible du manifest machine `docs/FREEZE_MANIFEST.json`. En cas de dive
 |---|---|
 | project | OBSIDIA_TRADING |
 | freeze_version | v0.1 (premier freeze) |
-| git_commit | voir `docs/FREEZE_MANIFEST.json` (rempli après commit du freeze) |
+| git_commit | e6ae249c35c017dc78445f7020f8951b161f4316 |
 | test_count | 168 |
 | skipped_count | 1 |
 | architecture_status | CLOSED (F1→F8.7) |
