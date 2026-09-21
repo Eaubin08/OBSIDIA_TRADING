@@ -948,3 +948,82 @@ cycle combinant les deux a la fois. La nuance documentee au point "constat
 honnete" ci-dessus (convergence non empruntee par le chemin natif) est reelle
 mais n'introduit aucune rupture architecturale observable par les tests :
 les deux chemins produisent des `Decision` du meme type via le meme Bridge.
+
+## F8.6 — External Full-Cycle Closure (2026-09-21)
+
+```
+Destination: tests/integration/test_end_to_end_external_full_stack.py (NOUVEAU)
+Source: reutilisation stricte de F3/F4/F5/F6/F7/F7.5/F8 (aucun nouveau composant metier)
+Original path: N/A
+Action: REWRITE_SMALL (nouveau test, memes classes que test_end_to_end_full_stack.py de F8.5)
+Reason: fermer la seule nuance laissee par F8.5 — le chemin EXTERNE n'avait jamais
+    ete exerce dans le MEME cycle que la simulation F4 (F8.5 scenario 1 = natif
+    seul ; F8.5 scenario 7 = externe seul, sans simulation attachee)
+Behavior changed: NO (aucune brique de production modifiee, uniquement un test)
+Authority impact: NONE
+```
+
+Deux scenarios obligatoires, chacun un cycle reel unique :
+
+1. **EXTERNAL + ACT + simulation** (`test_scenario_1_external_act_with_simulation_produces_paper_order_and_replayable_receipt`) :
+   `ExampleBrotherStackAdapter` (F8) -> `ExternalSignal` -> `ExternalStackAnalysisAdapter`
+   -> `normalize_external_signal` -> `to_canonical_agent_signal` (MEME point de
+   convergence que le natif, F3.5) -> `run_trading_simulation` (F4, reellement
+   execute) -> attache comme Evidence (`receipt.extensions["f7_simulation"]`,
+   jamais Authority) -> `KX108GovernanceBridge` (F5, `FixtureKX108Client` TEST-ONLY)
+   -> `ExecutionPlanner`/`_execute` (F6) -> `FakeBroker` (spy, zero reseau)
+   -> `CycleReceipt` -> `ReceiptStore.record` (F7) -> reload depuis le store
+   (source_system=external, source_id="brother_strategy_07",
+   adapter_id="brother_stack_v1", organization_id="brother_company",
+   unknowns/risk_flags de la stack externe — tous intacts apres reload)
+   -> `ReceiptChainVerifier` (VALID) -> `ReplayEngine.replay_audit` (zero appel
+   broker supplementaire) -> `ReplayEngine.replay_deterministic` (meme seed ->
+   MATCH). Exactement 1 appel `broker.submit`.
+
+2. **EXTERNAL + BLOCK** (`test_scenario_2_external_block_no_execution_but_evidence_and_provenance_traceable`) :
+   meme chemin jusqu'a KX108, fixture=BLOCK -> aucun appel broker, simulation/
+   evidence quand meme attachee et persistee, provenance externe conservee,
+   receipt BLOCK persiste avec raison tracable (`kx108_response.verdict == "BLOCK"`),
+   replay audit fonctionnel (retrouve le cycle, `execution=None`, zero appel broker).
+
+3. **Verifications structurelles** (`test_external_plus_simulation_context_preserves_all_boundaries`) :
+   scan des lignes `import`/`from` reelles (pas des mentions en docstring) dans
+   tout `external/` -> aucune vers `execution.binder`, `market.adapters.alpaca`
+   ou `governance.bridge` (External Adapter != Binder/Execution/Governance) ;
+   KX108=ACT + Binder degrade -> aucun ordre meme cote externe (Decision !=
+   Permission, External Adapter != Authority) ; attacher une simulation ne
+   change jamais `receipt.decision.authority` deja fige (Simulation !=
+   Authority) ; verdict ACT identique quelle que soit la provenance
+   native/externe (Source Provenance != Trust) ; persister/rejouer un receipt
+   externe ne change jamais la Decision ni ne rappelle le broker (Receipt !=
+   Decision, Replay != Execution).
+
+**Aucun nouveau Bridge, Binder, type de receipt ou replay engine cree** — le
+fichier reutilise `KX108GovernanceBridge`, `CycleEngine`/`ExecutionPlanner`,
+`CycleReceipt`/`ReceiptStore`/`ReceiptChainVerifier`/`ReplayEngine`,
+`ExternalStackAnalysisAdapter`/`ExampleBrotherStackAdapter` sans aucune
+modification de leur code.
+
+**Tests** : 3/3 PASS. Suite complete -> **146 passed, 1 skipped** (3 nouveaux,
+zero regression sur les 143 precedents).
+
+**Dette restante reelle avant F9** : la dette de convergence documentee en
+F8.5 (`native/agents/adapter.py` n'emprunte pas litteralement
+`to_canonical_agent_signal`, contrairement au chemin externe qui, lui, s'y
+conforme strictement via `normalizer.py`) reste presente et n'a PAS ete
+corrigee ici — F8.6 avait pour perimetre de prouver l'assemblage externe+
+simulation, pas de retoucher le roster natif (interdiction explicite de
+nouvelle architecture/composant). Cette dette est purement une difference de
+chemin de code interne (les DEUX chemins produisent la meme forme
+d'`AgentOutput` avec `source_provenance` correcte, verifie par tests) — elle
+n'a jamais empeche aucune propriete de gouvernance de tenir, dans aucun des
+scenarios F8.5 ou F8.6.
+
+**REPONSE SANS NUANCE** : *"Un signal EXTERNE peut-il maintenant traverser
+dans UN SEUL cycle toute la chaine F8 -> F4 -> F5 -> F6 -> F7/F7.5, jusqu'au
+receipt et au replay, en utilisant exactement la meme gouvernance que le
+natif ?"*
+
+**OUI.**
+
+F1 -> F8.6 = ARCHITECTURAL INTEGRATION CLOSED
