@@ -1,0 +1,147 @@
+"""
+Adapter entre le roster natif de 17 agents (core Obsidia, sigma/domains/trading_agents.py)
+et le moteur de cycle porte depuis agent-trad-main (execution/binder/engine.py).
+
+Pourquoi un adapter et pas une fusion directe des deux vocabulaires :
+
+Le moteur de cycle attend `AnalysisPort.analyse(...) -> Sequence[AgentOutput]`
+(domain/proposal.py : name, category, signal, confidence, rationale, inputs_digest).
+
+Le roster natif produit `AgentVote` (native/agents/contracts.py : agent_id, vote,
+proposed_verdict, confidence, domain, layer, claim, contradictions, unknowns,
+risk_flags, evidence_refs, severity_hint) — un format bien plus riche, avec
+exactement les champs que l'architecture cible veut au niveau du futur
+Canonical Domain Contract (unknowns, contradictions, risk_flags, evidence).
+
+Ecart documente (voir docs/MIGRATION_PROVENANCE.md, section F3) : pour cette
+phase, on ne perd aucune information mais on ne l'expose pas encore
+correctement au moteur — `unknowns`/`contradictions`/`risk_flags`/`evidence_refs`
+sont compresses dans `inputs_digest` en attendant que domain/contracts/ formalise
+le Canonical Domain Contract complet (hors perimetre F3). Ne pas construire un
+second pipeline parallele pour ces champs : le jour ou domain/contracts/ existe,
+cet adapter doit etre le seul point a modifier.
+
+Chaque agent recoit un `TradingState` (native/agents/contracts.py) reconstruit
+depuis `MarketSnapshot.bars` (domain/market.py). Les champs sans equivalent dans
+Bar (spreads_bps, sentiment_scores, event_risk_scores, btc_reference_prices)
+restent vides plutot que d'etre invente — les agents qui en dependent
+(LiquidityAgent, SentimentAgent, EventAgent) operent alors sur une donnee connue
+comme incomplete. Ceci est un gap documente, pas un defaut cache.
+"""
+from __future__ import annotations
+
+from typing import Dict, List, Optional, Sequence
+
+from domain.market import MarketSnapshot
+from domain.portfolio import PortfolioState
+from domain.proposal import AgentOutput
+
+from native.agents.contracts import AgentVote, TradingState
+from native.agents.domains.trading_agents import (
+    BreakoutAgent,
+    CorrelationAgent,
+    EventAgent,
+    ExecutionQualityAgent,
+    LiquidityAgent,
+    MacroAgent,
+    MarketDataAgent,
+    MeanReversionAgent,
+    MomentumAgent,
+    PatternAgent,
+    PortfolioAgent,
+    PortfolioStressAgent,
+    PredictionAgent,
+    ProofConsistencyAgent,
+    RegimeShiftAgent,
+    SentimentAgent,
+    VolatilityAgent,
+)
+
+ROSTER_17 = (
+    MarketDataAgent,
+    LiquidityAgent,
+    VolatilityAgent,
+    MacroAgent,
+    CorrelationAgent,
+    EventAgent,
+    MomentumAgent,
+    MeanReversionAgent,
+    BreakoutAgent,
+    PatternAgent,
+    SentimentAgent,
+    PredictionAgent,
+    PortfolioAgent,
+    ExecutionQualityAgent,
+    RegimeShiftAgent,
+    PortfolioStressAgent,
+    ProofConsistencyAgent,
+)
+
+
+def trading_state_from_snapshot(symbol: str, snapshot: MarketSnapshot) -> TradingState:
+    """Reconstruit un TradingState a partir des bars OHLCV connus du snapshot.
+
+    Les champs sans equivalent dans Bar (spread, sentiment, event risk, BTC
+    reference) restent a leur defaut (liste vide) : on ne les invente pas.
+    """
+    bars = snapshot.bars
+    prices = [b.close for b in bars] if bars else [snapshot.last_price]
+    highs = [b.high for b in bars] if bars else [snapshot.last_price]
+    lows = [b.low for b in bars] if bars else [snapshot.last_price]
+    volumes = [b.volume for b in bars] if bars else [snapshot.volume or 0.0]
+    return TradingState(
+        symbol=symbol,
+        prices=prices,
+        highs=highs,
+        lows=lows,
+        volumes=volumes,
+    )
+
+
+def agent_vote_to_agent_output(vote: AgentVote) -> AgentOutput:
+    """Traduit un AgentVote (roster natif) vers AgentOutput (moteur de cycle).
+
+    Compression documentee : unknowns/contradictions/risk_flags/evidence_refs
+    sont conserves dans inputs_digest plutot que perdus, en attendant le
+    Canonical Domain Contract (hors perimetre F3).
+    """
+    return AgentOutput(
+        name=vote.agent_id,
+        category=str(vote.domain),
+        signal=vote.proposed_verdict,
+        confidence=float(vote.confidence),
+        rationale=vote.claim,
+        inputs_digest={
+            "vote": vote.vote,
+            "layer": vote.layer,
+            "severity_hint": str(vote.severity_hint),
+            "unknowns": list(vote.unknowns),
+            "contradictions": list(vote.contradictions),
+            "risk_flags": list(vote.risk_flags),
+            "evidence_refs": list(vote.evidence_refs),
+        },
+    )
+
+
+class NativeRosterAnalysisAdapter:
+    """Implemente AnalysisPort (execution/binder/contracts.py) avec le roster de 17 agents.
+
+    Ne decide jamais : produit des AgentOutput, rien de plus. L'agregation,
+    la decision et l'execution restent hors de cette classe.
+    """
+
+    def __init__(self, agent_classes: Sequence[type] = ROSTER_17) -> None:
+        self._agents = [cls() for cls in agent_classes]
+
+    def analyse(
+        self,
+        symbol: str,
+        snapshot: MarketSnapshot,
+        portfolio: Optional[PortfolioState],
+    ) -> Sequence[AgentOutput]:
+        state = trading_state_from_snapshot(symbol, snapshot)
+        outputs: List[AgentOutput] = []
+        for agent in self._agents:
+            vote = agent.evaluate(state)
+            outputs.append(agent_vote_to_agent_output(vote))
+        return outputs
