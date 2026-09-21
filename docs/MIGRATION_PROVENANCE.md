@@ -179,4 +179,54 @@ Authority impact: NONE
 
 **Écart architectural non résolu, à traiter en F4/F5** : `market/adapters/alpaca/legacy_indicators.py` (indicateurs bruts pour le buffer MarketState d'agent-trad-main) et `native/agents/utils/indicators.py` (indicateurs du roster core) contiennent des fonctions de même nom (`rsi`, `zscore`, `bollinger`, `realized_volatility`) avec des implémentations potentiellement différentes, non unifiées. Ce n'est pas un bug — les deux servent des consommateurs différents pour l'instant — mais si une seule source de vérité est requise plus tard, c'est ici qu'il faudra trancher.
 
+## F3.5 — Canonical Contract Closure (2026-09-21)
+
+**Constat initial (verifie par inspection du code reel, pas suppose)** : contrairement a ce que suggerait la documentation F3, rien n'etait perdu de maniere IRRECUPERABLE dans le chemin principal — `AgentOutput.inputs_digest` (contenant unknowns/contradictions/risk_flags/evidence_refs) etait deja serialise via `ActionProposal.as_dict()["agent_outputs"]` -> `Decision.as_dict()["proposal"]` -> `CycleReceipt._hashable_content()["decision"]`. Le risque reel n'etait donc pas une perte actuelle, mais une FRAGILITE : ces champs vivaient sans protection dans un `Dict[str, Any]` generique nomme "digest" (un nom qui invite a etre resume/hashe/tronque plus tard), sans statut de premiere classe, et sans test qui l'aurait detecte si quelqu'un les avait un jour deplaces ou compresses.
+
+```
+Destination: domain/proposal.py (AgentOutput enrichi)
+Source: modification du code deja porte en F2 (agent-trad-main -> domain/proposal.py)
+Original path: N/A (evolution du contrat, pas une nouvelle migration)
+Action: ADAPT
+Reason: promouvoir unknowns/contradictions/risk_flags/evidence_refs en champs de premiere classe (Tuple[str,...]) plutot que des entrees d'un dict libre — source de verite unique, protegee par les dataclasses frozen existantes
+Behavior changed: NO (les valeurs deja portees dans inputs_digest sont maintenant portees en plus par des champs nommes ; as_dict() les expose desormais aux deux endroits pour compatibilite ascendante, inputs_digest ne garde que vote brut/layer/severity_hint)
+Authority impact: NONE
+```
+
+```
+Destination: native/agents/adapter.py (agent_vote_to_agent_output modifie)
+Source: modification du code deja porte en F3
+Original path: N/A
+Action: ADAPT
+Reason: peupler les nouveaux champs de premiere classe depuis AgentVote au lieu de tout empiler dans inputs_digest
+Behavior changed: NO (memes valeurs, chemin de stockage different et documente)
+Authority impact: NONE
+```
+
+```
+Destination: domain/contracts/__init__.py, domain/contracts/canonical.py (NOUVEAU)
+Source: aucune — formalisation documentaire + un point de convergence de code (to_canonical_agent_signal)
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: le Canonical Domain Contract demande section 8 de la fusion N'EST PAS une nouvelle famille de dataclasses paralleles (ce qui creerait deux sources de verite) — c'est une table de correspondance explicite vers les types deja portes (TradingDomainState, AgentOutput/CanonicalAgentSignal, ActionProposal=TradeIntent, Opportunity+StrategyCandidate=TradeProposal, Provenance, PortfolioState) plus UN point de construction unique (`to_canonical_agent_signal`) que native/agents/adapter.py utilise deja et qu'un futur adapter externe (F8, external/normalization/) devra utiliser aussi, pour qu'il n'existe jamais deux chemins de conversion vers la gouvernance.
+Behavior changed: N/A (nouveau module, ne remplace aucune logique existante)
+Authority impact: NONE (CanonicalCycleView est une vue en lecture seule, jamais utilisee pour decider)
+
+DECISION DE CONCEPTION DOCUMENTEE (ambiguite reelle rencontree) : fallait-il que le moteur de cycle (execution/binder/engine.py) commence a LIRE unknowns/contradictions/risk_flags pour influencer sa decision ? NON — ce fichier a ete modifie pour les TRANSPORTER, pas pour les INTERPRETER. Alternative rejetee : faire remonter ces champs dans l'agregation (Consensus) ou la Decision pour qu'ils pesent sur le verdict — rejete car cela ferait de native/agents/adapter.py une autorite qui influence KX108 en amont de la gouvernance formelle (section 13 : "le Planner/Broker verifie le verdict, il ne le fabrique pas" — le meme principe s'applique en amont, au niveau des signaux). Ces champs restent des donnees d'observation transportees fidelement jusqu'au receipt ; leur exploitation pour decider appartient exclusivement a la couche gouvernance/KX108 (F5), pas a ce pont.
+```
+
+```
+Destination: tests/unit/test_canonical_contract_integrity.py (NOUVEAU)
+Source: aucune — tests nouveaux
+Original path: N/A
+Action: REWRITE_SMALL
+Reason: 4 tests prouvant qu'un unknown/contradiction/risk_flag produit par un agent (via to_canonical_agent_signal) est retrouvable (a) comme champ de premiere classe sur CanonicalAgentSignal, (b) dans le dict serialise complet Decision.as_dict()["proposal"]["agent_outputs"], (c) dans le contenu hashable du CycleReceipt final. Le 4e test documente explicitement pourquoi la garde ne peut pas etre contournee en revenant a un stockage inputs_digest-only.
+Behavior changed: N/A
+Authority impact: NONE
+```
+
+**Resultat des tests F3.5** : `pytest tests/ -q` -> **29 passed, 1 skipped** (25 precedents + 4 nouveaux, meme skip documente qu'en F2, aucune regression).
+
+**Dette restante, honnetement signalee** : la table de correspondance dans `domain/contracts/canonical.py` documente `TradeProposal = Opportunity + StrategyCandidate` et `TradeIntent = ActionProposal`, mais aucun renommage n'a ete fait dans le code — ce sont des alias documentaires, pas des types renommes. Un futur adapter externe (F8) devra utiliser `to_canonical_agent_signal` par convention ; rien dans le code n'empeche aujourd'hui de construire un `AgentOutput` a la main en contournant ce point de convergence (pas de verification runtime). A renforcer si necessaire quand l'adapter externe existera reellement.
+
 <!-- F4 ci-dessous -->

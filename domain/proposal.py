@@ -19,6 +19,11 @@ from typing import Any, Dict, Optional, Tuple
 
 from domain.types import ActionKind, OrderType, Side
 
+# F3.5 - Canonical Domain Contract : ces quatre champs sont les invariants
+# semantiques qu'un agent peut porter et qui ne doivent JAMAIS disparaitre
+# silencieusement entre l'agent et le receipt final. Voir domain/contracts/.
+CanonicalEvidence = Tuple[str, ...]
+
 
 OPPORTUNITY_STATUSES = {"VALID", "WEAK", "CONFLICTED", "DEGRADED"}
 SIZING_STATUSES = {"VALID", "REDUCED", "ZERO", "REJECTED"}
@@ -33,6 +38,17 @@ class AgentOutput:
     Transpose `AgentVote` du prototype en y ajoutant `inputs_digest`, qui
     permet a un receipt de dire sur quoi l'agent s'est appuye, et non
     seulement ce qu'il a conclu.
+
+    F3.5 (Canonical Domain Contract) : `unknowns`, `contradictions` et
+    `risk_flags` sont des champs de PREMIERE CLASSE, pas des entrees
+    optionnelles d'un blob libre. Un agent qui produit un unknown, une
+    contradiction ou un risk_flag doit le retrouver ici, sous ce nom exact,
+    jusqu'au receipt final (domain/receipt.py -> Decision -> ActionProposal
+    -> AgentOutput). `inputs_digest` reste reserve aux metadonnees
+    operationnelles non critiques (vote brut, layer, severity_hint) : rien
+    de semantiquement important ne doit y etre range en exclusivite, car un
+    "digest" peut legitimement etre resume/hashe plus tard sans que ce soit
+    une regression.
     """
 
     name: str
@@ -40,6 +56,10 @@ class AgentOutput:
     signal: str
     confidence: float
     rationale: str
+    unknowns: CanonicalEvidence = field(default_factory=tuple)
+    contradictions: CanonicalEvidence = field(default_factory=tuple)
+    risk_flags: CanonicalEvidence = field(default_factory=tuple)
+    evidence_refs: CanonicalEvidence = field(default_factory=tuple)
     inputs_digest: Dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
@@ -49,6 +69,10 @@ class AgentOutput:
             "signal": self.signal,
             "confidence": round(self.confidence, 6),
             "rationale": self.rationale,
+            "unknowns": list(self.unknowns),
+            "contradictions": list(self.contradictions),
+            "risk_flags": list(self.risk_flags),
+            "evidence_refs": list(self.evidence_refs),
             "inputs": self.inputs_digest,
         }
 

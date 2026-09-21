@@ -13,13 +13,13 @@ risk_flags, evidence_refs, severity_hint) — un format bien plus riche, avec
 exactement les champs que l'architecture cible veut au niveau du futur
 Canonical Domain Contract (unknowns, contradictions, risk_flags, evidence).
 
-Ecart documente (voir docs/MIGRATION_PROVENANCE.md, section F3) : pour cette
-phase, on ne perd aucune information mais on ne l'expose pas encore
-correctement au moteur — `unknowns`/`contradictions`/`risk_flags`/`evidence_refs`
-sont compresses dans `inputs_digest` en attendant que domain/contracts/ formalise
-le Canonical Domain Contract complet (hors perimetre F3). Ne pas construire un
-second pipeline parallele pour ces champs : le jour ou domain/contracts/ existe,
-cet adapter doit etre le seul point a modifier.
+F3.5 (Canonical Domain Contract Closure) : `unknowns`/`contradictions`/
+`risk_flags`/`evidence_refs` sont maintenant des champs de premiere classe sur
+`AgentOutput` (domain/proposal.py), pas des entrees compressees dans
+`inputs_digest`. Ce fichier est le SEUL point de traduction AgentVote ->
+AgentOutput : voir domain/contracts/canonical.py pour la definition normative
+du contrat et tests/unit/test_canonical_contract_integrity.py pour la preuve
+de non-perte agent -> receipt.
 
 Chaque agent recoit un `TradingState` (native/agents/contracts.py) reconstruit
 depuis `MarketSnapshot.bars` (domain/market.py). Les champs sans equivalent dans
@@ -101,9 +101,11 @@ def trading_state_from_snapshot(symbol: str, snapshot: MarketSnapshot) -> Tradin
 def agent_vote_to_agent_output(vote: AgentVote) -> AgentOutput:
     """Traduit un AgentVote (roster natif) vers AgentOutput (moteur de cycle).
 
-    Compression documentee : unknowns/contradictions/risk_flags/evidence_refs
-    sont conserves dans inputs_digest plutot que perdus, en attendant le
-    Canonical Domain Contract (hors perimetre F3).
+    F3.5 : unknowns/contradictions/risk_flags/evidence_refs sont copies vers
+    les champs de premiere classe d'AgentOutput — source de verite unique.
+    `inputs_digest` ne porte plus que des metadonnees operationnelles
+    (vote brut, layer, severity_hint) qui n'ont pas d'equivalent de premiere
+    classe cote AgentOutput.
     """
     return AgentOutput(
         name=vote.agent_id,
@@ -111,14 +113,14 @@ def agent_vote_to_agent_output(vote: AgentVote) -> AgentOutput:
         signal=vote.proposed_verdict,
         confidence=float(vote.confidence),
         rationale=vote.claim,
+        unknowns=tuple(vote.unknowns),
+        contradictions=tuple(vote.contradictions),
+        risk_flags=tuple(vote.risk_flags),
+        evidence_refs=tuple(vote.evidence_refs),
         inputs_digest={
             "vote": vote.vote,
             "layer": vote.layer,
             "severity_hint": str(vote.severity_hint),
-            "unknowns": list(vote.unknowns),
-            "contradictions": list(vote.contradictions),
-            "risk_flags": list(vote.risk_flags),
-            "evidence_refs": list(vote.evidence_refs),
         },
     )
 
