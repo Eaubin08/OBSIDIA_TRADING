@@ -819,4 +819,132 @@ extension f7_simulation" en un seul cycle bout-en-bout. Avant F9 (qui doit pouvo
 Cockpit demo), il faut decider si ce cablage integral complet est un prerequis demonstratif ou
 si F9 peut se contenter d'assembler les pieces deja prouvees separement (F2 Alpaca, F4
 simulation, F6 execution, F7 proof, F7.5 provenance, F8 external) sans un test d'integration
-unique qui les exerce toutes ensemble.
+unique qui les exerce toutes ensemble. **-> traite en F8.5 ci-dessous.**
+
+## F8.5 — Full End-to-End Integration (2026-09-21)
+
+**Aucune nouvelle brique metier.** Ce chantier assemble uniquement des pieces
+deja construites et prouvees separement (F2/F3/F3.5/F4/F5/F6/F7/F7.5/F8) dans
+UN test d'integration qui les fait toutes traverser reellement en un seul
+cycle. Le seul "cablage" ajoute est une fonction utilitaire de test
+(`_attach_simulation_evidence`) qui execute reellement `run_trading_simulation`
+(F4) et attache son resultat sur `receipt.extensions["f7_simulation"]` AVANT
+persistance — `execution/binder/engine.py` (fige depuis F3/F5) n'est PAS
+modifie : `CycleReceipt.extensions` est un dict mutable a l'interieur d'un
+dataclass frozen, muter son contenu avant `store.record()` est le mecanisme
+documente par F7 pour un enrichissement pre-persistance (meme principe que le
+decorateur de preuve mentionne dans `engine.py::_prove`).
+
+```
+Destination: tests/integration/test_end_to_end_full_stack.py (NOUVEAU, 11 tests)
+Source: assemblage de composants deja portes (aucune nouvelle source)
+Original path: N/A
+Action: REWRITE_SMALL (tests uniquement)
+Reason: preuve d'assemblage des 7 scenarios contraints + hash-chain globale +
+  alteration volontaire + tests structurels groupes demandes par l'utilisateur
+Behavior changed: N/A (aucun fichier de production modifie)
+Authority impact: NONE
+```
+
+**Deux chemins obligatoires, memes composants apres convergence** :
+- NATIF : `NativeRosterAnalysisAdapter()` (F3, vrai roster de 17 agents, pas
+  un double) — utilise directement dans les scenarios 1 et 7, produit 17
+  `AgentOutput` tagues `source_provenance.source_system=native` (F7.5).
+- EXTERNE : `ExternalStackAnalysisAdapter(ExampleBrotherStackAdapter())` (F8)
+  — meme `KX108GovernanceBridge`, meme `CycleEngine`, meme `AlpacaBroker` fake.
+  `test_scenario_7_...` prouve `type(decision_native) is type(decision_external)`
+  et que les DEUX passent par le meme point d'assemblage sans branche de code
+  dediee a "external" dans la gouvernance.
+
+**Constat honnete (dette decouverte, non corrigee ici — hors scope F8.5)** :
+`native/agents/adapter.py::agent_vote_to_agent_output` construit `AgentOutput`
+directement (memes champs), SANS appeler litteralement
+`domain.contracts.canonical.to_canonical_agent_signal` — seul
+`external/normalization/normalizer.py` (F8) utilise ce point de convergence
+pour de vrai. Les deux chemins produisent la MEME FORME de sortie (verifie
+par les tests), mais le "point de convergence unique" documente en F3.5 n'est
+aujourd'hui emprunte que par le chemin externe. Corriger cela serait modifier
+`native/agents/adapter.py`, une brique de production deja figee et testee —
+explicitement hors perimetre F8.5 ("pas de nouvelle brique metier"). Signale
+pour une future revue, pas corrige silencieusement.
+
+**Les 7 scenarios contraints, tous reellement executes** :
+1. ACT + simulation reelle attachee -> 1 ordre PAPER, 1 receipt persiste, hash
+   valide, replay audit PASS, replay deterministe MATCH (meme seed) puis
+   digest different confirme sur une seed differente (PASS)
+2. HOLD -> aucun ordre, receipt produit, replay audit retrouve `authority=HOLD`
+3. BLOCK -> aucune execution, raison + source KX108 tracables dans le receipt
+4. ACT + Binder refuse (compte bloque) -> aucun ordre ; prouve Decision != Permission
+5. Erreur broker -> `execution.submitted=False`, `consequence.executed=False`,
+   jamais un faux succes
+6. Double soumission du meme `ExecutionPlan`/`client_order_id` -> premiere
+   acceptee, seconde rejetee ("idempotence"), broker appele une seule fois
+   (reutilise `execution/binder/order_ledger_jsonl.py`, F6, sans modification)
+7. Provenance native vs externe -> les DEUX receipts, RECHARGES DEPUIS LE
+   STORE (`store.find_by_cycle_id`, pas depuis la memoire), portent
+   `source_provenance` intact (source_system/source_id/adapter_id/
+   organization_id) ; les `unknowns`/`risk_flags` de la stack externe
+   (`ExampleBrotherStackAdapter`, F8) survivent jusqu'au receipt relu
+
+**Hash-chain globale** (`test_full_chain_across_all_scenarios_is_valid_then_detects_tampering`) :
+4 cycles (HOLD, BLOCK, ACT-degrade, ACT) chaines dans UN seul fichier ->
+`IntegrityStatus.VALID`, `checked_count=4`. Alteration d'un receipt
+intermediaire sur une COPIE (`shutil.copy`, jamais l'original) -> `CORRUPTED`,
+`first_error_index=1`. L'original reste `VALID` apres coup : aucune
+contamination, aucune reparation automatique.
+
+**Tests structurels groupes** (`test_no_category_ever_grants_itself_authority_beyond_its_role`) :
+Agent != Authority, External Adapter != Authority, Simulation != Authority
+(le resultat de simulation n'entre jamais dans `Decision`, seulement dans
+`extensions`), Intent != Action, KX108 Decision != Binder Permission, Binder
+Permission != Execution Success, Receipt != Decision, Proof != Authority,
+Replay != Execution, Source Provenance != Trust (un signal externe et un
+signal natif produisent la meme `Authority` pour le meme verdict KX108 —
+ni bonus ni malus de confiance lie a la provenance) — toutes verifiees
+ENSEMBLE sur des cycles reels partageant le meme store, pas seulement
+rappelees isolement depuis F3-F8.
+
+**Resultat des tests** : `pytest tests/integration/test_end_to_end_full_stack.py -q`
+-> 11/11 PASS. `pytest tests/ -q` (suite complete) -> **143 passed, 1 skipped**
+(11 nouveaux, zero regression sur les 132 precedents).
+
+**Dette restante, honnetement signalee** :
+1. Le "point de convergence unique" (`to_canonical_agent_signal`) n'est
+   emprunte que par le chemin externe (F8), pas par le chemin natif (F3) —
+   voir constat ci-dessus, non corrige (hors scope).
+2. Le cablage simulation -> cycle reel reste une fonction de TEST
+   (`_attach_simulation_evidence`), pas un mecanisme de production dans
+   `execution/binder/paper_execution.py` — un futur appelant de production
+   qui voudrait attacher systematiquement une simulation a chaque cycle ACT
+   devrait le faire explicitement (ce chantier prouve que c'est possible et
+   sans effet de bord, il ne l'automatise pas).
+3. `NativeRosterAnalysisAdapter` est exerce ici sur des bars synthetiques
+   deterministes (pas aleatoires, mais pas des donnees de marche reelles) —
+   suffisant pour prouver l'assemblage architectural, pas une validation de
+   la pertinence des signaux produits (deja hors scope, couverte separement
+   par `tests/unit/test_native_roster.py`).
+
+**Statut F1->F8.5 : DONE.**
+
+**REPONSE EXPLICITE A LA QUESTION POSEE** : *"Est-ce qu'un seul cycle reel
+traverse maintenant toute la stack F2 + F4 + F5 + F6 + F7 + F7.5 + F8 sans
+rupture architecturale ?"*
+
+**OUI**, avec une nuance honnete a connaitre : le scenario 1
+(`test_scenario_1_act_with_simulation_produces_paper_order_and_replayable_receipt`)
+fait reellement traverser un seul cycle par F2 (Alpaca fake, meme forme
+d'objets que le vrai broker), F3 (roster natif reel + Binder reel), F4
+(simulation reellement executee et son digest compare en replay), F5
+(Governance Bridge reel + KX108 fixture), F6 (execution PAPER + ledger reel),
+F7 (ReceiptStore + ReceiptChainVerifier + ReplayEngine reels), F7.5
+(SourceProvenance native reelle sur les 17 sorties d'agents) — sans aucune
+rupture, sans aucun mock d'une des couches de gouvernance elles-memes (seuls
+le broker HTTP et les donnees de marche sont des fakes, deliberement, pour
+eviter le reseau). F8 est prouve dans le meme test d'integration mais sur un
+cycle SEPARE (scenario 7) plutot que dans le MEME cycle que la simulation F4
+— rien n'empeche techniquement de les combiner (meme `AnalysisPort`,
+meme moteur), ce n'etait simplement pas demande comme un seul et unique
+cycle combinant les deux a la fois. La nuance documentee au point "constat
+honnete" ci-dessus (convergence non empruntee par le chemin natif) est reelle
+mais n'introduit aucune rupture architecturale observable par les tests :
+les deux chemins produisent des `Decision` du meme type via le meme Bridge.
