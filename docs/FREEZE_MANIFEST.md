@@ -13,7 +13,8 @@ Résumé lisible du manifest machine `docs/FREEZE_MANIFEST.json`. En cas de dive
 | project | OBSIDIA_TRADING |
 | freeze_version | v0.2 |
 | parent_reference | v0.1 (commit `9e68391`) |
-| git_commit | `4236edafb1f9db98143c596d23564c60392a2ded` |
+| git_commit | `4236edafb1f9db98143c596d23564c60392a2ded` (commit du contenu scelle — voir `commit_semantics` dans le .json ; pour une reference stable utiliser `reference_tag`) |
+| reference_tag | `obsidia-trading-v0.2-reference` |
 | test_count | 188 |
 | skipped_count | 1 |
 | architecture_status | CLOSED (F1→F8.7) |

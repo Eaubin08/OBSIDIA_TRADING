@@ -9,7 +9,8 @@
 | reference_version | v0.2 |
 | parent_reference | v0.1 |
 | parent_commit | `9e68391da6b5b6c631ae83b7c5383082e6f4837e` |
-| current_commit | `4236edafb1f9db98143c596d23564c60392a2ded` |
+| current_commit / sealed_content_commit | `4236edafb1f9db98143c596d23564c60392a2ded` (commit du contenu scelle, pas necessairement le HEAD actuel — voir `commit_semantics` dans le .json) |
+| reference_tag | `obsidia-trading-v0.2-reference` (reference stable, a utiliser plutot que le commit ci-dessus) |
 | test_count / skipped_count | 188 / 1 |
 | architecture_status | CLOSED |
 | canonical_convergence_status | CLOSED |

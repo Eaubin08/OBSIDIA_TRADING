@@ -95,6 +95,14 @@ def main() -> None:
         "sealed_file_count": len(pairs),
         "root_hash": root_hash,
         "commit": current_commit(),
+        "commit_semantics": (
+            "'commit' est le HEAD au moment ou ce script a lu l'arbre de "
+            "travail. Un commit ulterieur peut exister sans que le contenu "
+            "scelle change (ex: un commit qui enregistre ce fichier lui-meme). "
+            "Pour une reference stable, utiliser reference_tag plutot que ce "
+            "champ."
+        ),
+        "reference_tag": "obsidia-trading-v0.2-reference",
         "generation_timestamp": datetime.now(timezone.utc).isoformat(),
         "note": (
             "Ce seal couvre uniquement le code de production et les docs de "

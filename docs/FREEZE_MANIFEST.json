@@ -6,6 +6,8 @@
   "parent_reference": "v0.1",
   "parent_commit": "9e68391da6b5b6c631ae83b7c5383082e6f4837e",
   "git_commit": "4236edafb1f9db98143c596d23564c60392a2ded",
+  "commit_semantics": "git_commit est le HEAD au moment du calcul du seal, pas necessairement le HEAD actuel du depot. Audite le 2026-09-22 : root_hash recalcule independamment depuis le disque a HEAD reel est identique a merkle_seal.json -> le contenu scelle correspond bien au HEAD courant, seul ce champ de metadonnee retarde d'un commit (le commit qui a enregistre ce meme freeze). Pour une reference stable, utiliser reference_tag.",
+  "reference_tag": "obsidia-trading-v0.2-reference",
   "known_boundaries": [
     "Le score structurel local (native/agents ou governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) est un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
     "Ce freeze ne prouve rien sur le comportement du Kernel X-108 de production (scelle, externe, jamais accede depuis ce repo).",
