@@ -1,4 +1,4 @@
-# FREEZE_MANIFEST — OBSIDIA_TRADING v0.2.2 (ACTIVE)
+# FREEZE_MANIFEST — OBSIDIA_TRADING v0.2.2 (SUPERSEDED)
 
 > Résumé lisible du manifest machine `docs/FREEZE_MANIFEST_V0.2.2.json`. En cas de
 > divergence, le `.json` fait foi.
@@ -10,9 +10,12 @@
 | v0.1 | `9e68391` | `obsidia-trading-v0.1-historical` | Référence historique F1→F10, intacte |
 | v0.2 | `853b05e` | `obsidia-trading-v0.2-reference` | **SUPERSEDED** — audit de release |
 | v0.2.1 | `391aa23` | `obsidia-trading-v0.2.1-reference` | **SUPERSEDED** — résidu README |
-| v0.2.2 | (ce document) | `obsidia-trading-v0.2.2-reference` | **ACTIVE** |
+| v0.2.2 | `557837c` | `obsidia-trading-v0.2.2-reference` | **SUPERSEDED** — doc/release hygiene uniquement |
+| v0.2.3 | voir manifest actif | `obsidia-trading-v0.2.3-reference` | **ACTIVE** |
 
 Aucun tag existant n'a été déplacé ni réécrit. Chaque version reste vérifiable indépendamment.
+
+> **SUPERSEDED par v0.2.3** : v0.2.2 reste intègre et a été validée depuis un clone vierge (`PRIVATE_REMOTE_REPRODUCIBLE`). La supersession est uniquement documentaire/release : pointeurs README stabilisés et état distant reflété dans le manifest actif.
 
 ## Pourquoi v0.2.1 est superseded (pas corrompue)
 

@@ -1,6 +1,6 @@
 # OBSIDIA_TRADING
 
-Implémentation de référence du domaine Trading gouverné par Obsidia — **v0.2.2**.
+Implémentation de référence active du domaine Trading gouverné par Obsidia.
 
 ## What is OBSIDIA_TRADING?
 
@@ -40,7 +40,7 @@ Une entreprise (ou une stack tierce) garde ses propres agents/règles/données e
 
 **Les deux chemins convergent avant l'autorité**, au niveau de `domain/contracts/canonical.py` (`to_canonical_agent_signal` — un seul builder, utilisé par les deux chemins). Après ce point, la provenance Native/External ne change jamais le comportement de la gouvernance. Il n'y a jamais deux kernels.
 
-## Current status — Reference Implementation v0.2.2
+## Current status — Active Reference Implementation
 
 ```
 188 passed
@@ -49,7 +49,7 @@ Une entreprise (ou une stack tierce) garde ses propres agents/règles/données e
 PAPER ONLY
 ```
 
-Voir `docs/FREEZE_MANIFEST_V0.2.2.md` pour le manifest complet, et `merkle_seal.json` (+ `docs/SEAL_SCOPE.md`) pour le périmètre scellé. La v0.1 (F1→F10, avant la démo Naive vs Governed) reste une référence historique intacte et indépendamment vérifiable sous `docs/history/` — voir `docs/DEMO_BRANCH_SEAL_STATUS.md` pour le détail de la promotion.
+Voir `docs/FREEZE_MANIFEST.md` pour le manifest actif, et `merkle_seal.json` (+ `docs/SEAL_SCOPE.md`) pour le périmètre scellé. La v0.1 (F1→F10, avant la démo Naive vs Governed) reste une référence historique intacte et indépendamment vérifiable sous `docs/history/` — voir `docs/DEMO_BRANCH_SEAL_STATUS.md` pour le détail de la promotion.
 
 ## Critical boundaries
 
@@ -108,7 +108,7 @@ Démonstration pédagogique intégrée au Cockpit (`apps/naive_vs_governed/`) : 
 
 ## Known limitations
 
-Voir `docs/FREEZE_MANIFEST_V0.2.md` (section `known_debts`) pour la liste exacte et à jour. Résumé :
+Voir `docs/FREEZE_MANIFEST.md` (section `Dettes connues`) pour la liste exacte et à jour. Résumé :
 - Aucun vrai Kernel X-108 branché (fail-closed par construction)
 - Politique de preuve actuelle = `PROOF_BEST_EFFORT` (pas `PROOF_REQUIRED`)
 - Matrice de régimes de Markov **non calibrée** sur données réelles

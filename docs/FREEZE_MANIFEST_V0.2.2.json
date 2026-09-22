@@ -1,5 +1,5 @@
 {
-  "status": "ACTIVE",
+  "status": "SUPERSEDED",
   "reference_version": "v0.2.2",
   "parent_reference": "v0.2.1",
   "parent_commit": "391aa23",
@@ -48,5 +48,7 @@
     "Packs de tests formels du Kernel (MVP-obsidia-, ex: test_absolute_hold_gate, test_non_invertible_order) NOT_PORTABLE : ils testent des invariants du Kernel X-108 reel, externe et scelle, hors perimetre inspectable depuis ce repo.",
     "Les verdicts TEST FIXTURE KX108 des scenarios B et C de la demo Naive vs Governed sont des configurations narratives fixees a l'avance (le fixture ne lit pas les unknowns/contradictions et ne derive aucun verdict a partir d'eux) — juxtaposition pedagogique, pas une causalite calculee par un Kernel reel. Voir apps/naive_vs_governed/comparison.py et docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
     "Le test AST d'isolation du chemin Naive (tests/unit/test_naive_vs_governed.py) scanne les imports statiques (ast.Import/ImportFrom) ; il ne couvre theoriquement pas un import dynamique (importlib, __import__, eval, exec). NONE FOUND dans apps/naive_vs_governed/ (verifie par grep) — angle mort documente, pas corrige par un systeme de detection supplementaire (juge disproportionne pour ce risque)."
-  ]
+  ],
+  "superseded_by": "v0.2.3 (tag obsidia-trading-v0.2.3-reference)",
+  "supersession_reason": "Le seal v0.2.2 reste coherent et la version a ete validee PRIVATE_REMOTE_REPRODUCIBLE. v0.2.3 la supersede uniquement pour eliminer les pointeurs README actifs versionnes susceptibles de devenir obsoletes et pour refléter l'etat distant prive/reproductible dans le manifest actif."
 }
