@@ -1,4 +1,6 @@
-# FREEZE_MANIFEST — OBSIDIA_TRADING v0.2.4 (ACTIVE)
+# FREEZE_MANIFEST — OBSIDIA_TRADING v0.2.4 (SUPERSEDED)
+
+> **SUPERSEDED par v0.3** : aucun défaut fonctionnel ici. v0.3 promeut F11 (PROOF_REQUIRED) → F12 (Real KX108 Integration) → F12.1 (Reference Runtime Closure) → F13 (Real Trading Calibration) → F13.1 (Calibration Consumption Closure) vers master. v0.2.4 reste une référence historique intacte et indépendamment vérifiable.
 
 v0.2.4 est une correction du mécanisme de release/seal uniquement. Aucun mécanisme métier, aucune autorité, aucun Binder, aucun chemin d'exécution et aucun test fonctionnel ne change.
 

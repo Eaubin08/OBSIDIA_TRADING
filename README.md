@@ -43,7 +43,7 @@ Une entreprise (ou une stack tierce) garde ses propres agents/règles/données e
 ## Current status — Active Reference Implementation
 
 ```
-188 passed
+283 passed
 1 skipped
 0 known regression
 PAPER ONLY

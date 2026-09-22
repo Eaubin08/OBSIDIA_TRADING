@@ -1,5 +1,6 @@
 {
-  "status": "ACTIVE",
+  "status": "SUPERSEDED",
+  "superseded_by": "v0.3 (tag obsidia-trading-v0.3-reference)",
   "reference_version": "v0.2.4",
   "parent_reference": "v0.2.3",
   "parent_commit": "5e1b175c1bc3cf1ed1fe650a319c1b559daf1d26",

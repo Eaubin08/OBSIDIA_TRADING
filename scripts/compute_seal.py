@@ -113,7 +113,7 @@ def main() -> None:
             "Pour une reference stable, utiliser reference_tag plutot que ce "
             "champ."
         ),
-        "reference_tag": "obsidia-trading-v0.2.4-reference",
+        "reference_tag": "obsidia-trading-v0.3-reference",
         "generation_timestamp": datetime.now(timezone.utc).isoformat(),
         "note": (
             "Ce seal couvre uniquement le code de production et les docs de "
