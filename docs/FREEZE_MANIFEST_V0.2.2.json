@@ -1,0 +1,52 @@
+{
+  "status": "ACTIVE",
+  "reference_version": "v0.2.2",
+  "parent_reference": "v0.2.1",
+  "parent_commit": "391aa23",
+  "commit_semantics": "Le hash exact de ce commit n'est connu qu'apres l'operation git commit elle-meme ; voir git log ou le tag pour la reference stable. Pour une reference qui ne devient jamais obsolete, utiliser reference_tag.",
+  "reference_tag": "obsidia-trading-v0.2.2-reference",
+  "project": "OBSIDIA_TRADING",
+  "test_count": 188,
+  "skipped_count": 1,
+  "architecture_status": "CLOSED",
+  "canonical_convergence_status": "CLOSED",
+  "native_status": "PASS",
+  "external_status": "PASS",
+  "cockpit_status": "PASS",
+  "naive_vs_governed_status": "PASS",
+  "paper_execution_status": "ENFORCED",
+  "proof_replay_status": "PASS",
+  "historical_regression_status": "PASS",
+  "known_regressions": 0,
+  "canonical_contract_version": "canonical.v1",
+  "receipt_schema_version": "receipt.v1",
+  "proof_policy": "PROOF_BEST_EFFORT",
+  "kx108_status": "NO_REAL_KERNEL_CONNECTED",
+  "added_capability": "AUCUNE. v0.2.2 est un correctif documentaire/release uniquement, aucun changement fonctionnel.",
+  "release_hygiene_fixes": [
+    "README.md : les deux mentions de version active 'v0.2' (titre, section 'Current status') corrigees en 'v0.2.2'. La reference historique a 'v0.1' (paragraphe sur la promotion) reste intacte et inchangee -- ce n'est pas la version active, elle ne devait pas etre touchee.",
+    "README.md : reference au manifest complet mise a jour de docs/FREEZE_MANIFEST_V0.2.md vers docs/FREEZE_MANIFEST_V0.2.2.md.",
+    "scripts/compute_seal.py : constante reference_tag mise a jour vers obsidia-trading-v0.2.2-reference pour toute regeneration future.",
+    "docs/FREEZE_MANIFEST_V0.2.1.{json,md} : marques SUPERSEDED avec pointeur superseded_by vers v0.2.2.",
+    "Verification exhaustive : aucune autre mention de version active obsolete trouvee dans les fichiers .py de production du perimetre scelle (domain/, native/, external/, market/, simulation/, governance/, execution/, proof/, apps/) ni dans docs/B15_STRUCTURAL_SCORE_BOUNDARY.md, docs/MIGRATION_PROVENANCE.md, docs/F10_HISTORICAL_REGRESSION_MATRIX.md."
+  ],
+  "supersession_note": "v0.2 (commit 853b05e) et v0.2.1 (commit 391aa23) n'etaient PAS corrompues -- leurs seals respectifs ont ete verifies interne coherents avant chaque correction. v0.2 a ete supersedee par un audit de release (secrets/chemins/dependances/reproductibilite). v0.2.1 a ete supersedee par un residu purement textuel : README.md contenait encore les mentions de version active 'v0.2' au lieu de 'v0.2.1', laisse par inadvertance lors de la creation de v0.2.1 elle-meme (le README avait deja ete reecrit dans un commit anterieur a la decision de nommer cette version v0.2.1 plutot que de patcher v0.2 en place).",
+  "known_boundaries": [
+    "Le score structurel local (native/agents ou governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) est un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
+    "Ce freeze ne prouve rien sur le comportement du Kernel X-108 de production (scelle, externe, jamais accede depuis ce repo).",
+    "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia) — voir docs/SEAL_SCOPE.md pour le perimetre exact du merkle_seal.json dedie a ce repo.",
+    "Aucun remote git n'est configure pour ce repo ; aucun push n'a ete effectue a aucune etape de F1 a v0.2.2.",
+    "v0.1 (commit 9e68391, tag obsidia-trading-v0.1-historical), v0.2 (commit 853b05e, tag obsidia-trading-v0.2-reference) et v0.2.1 (commit 391aa23, tag obsidia-trading-v0.2.1-reference) restent des references historiques intactes, jamais deplacees ni reecrites."
+  ],
+  "known_debts": [
+    "Aucun vrai Kernel X-108 branche dans ce repo : FixtureKX108Client est TEST-ONLY (tests/test_support/), le comportement de production par defaut est UnavailableKX108Client, fail-closed (Authority.HOLD sur indisponibilite ou reponse invalide).",
+    "Alpaca live structurellement interdit (require_paper_mode leve LiveModeRejected avant toute connexion) ; aucune cle live presente dans le repo.",
+    "Politique de preuve actuelle = PROOF_BEST_EFFORT : un echec d'ecriture du receipt (proof.record) est journalise (note()) mais n'interrompt pas le cycle (execution/binder/engine.py, bloc try/except autour de proof.record). PROOF_REQUIRED est documente comme politique cible pour le chemin gouverne critique mais n'est pas active.",
+    "Matrice de regimes de Markov (simulation/trading_world/market_process.py::build_regime_matrix) NON CALIBREE sur donnees reelles ; auto-transition favorisee artificiellement par construction, heritage assume de la source TradingWorld (tradingEngine.ts).",
+    "Rendu visuel Streamlit du Cockpit (apps/cockpit/app.py) non teste automatiquement ; seule la couche donnees (apps/cockpit/presenter.py, scenarios.py, apps/naive_vs_governed/comparison.py) est couverte par pytest.",
+    "Le store de receipts du Cockpit est temporaire par session (aucune persistance entre lancements) — coherent avec un usage demo/PAPER, pas un journal de production.",
+    "Packs de tests formels du Kernel (MVP-obsidia-, ex: test_absolute_hold_gate, test_non_invertible_order) NOT_PORTABLE : ils testent des invariants du Kernel X-108 reel, externe et scelle, hors perimetre inspectable depuis ce repo.",
+    "Les verdicts TEST FIXTURE KX108 des scenarios B et C de la demo Naive vs Governed sont des configurations narratives fixees a l'avance (le fixture ne lit pas les unknowns/contradictions et ne derive aucun verdict a partir d'eux) — juxtaposition pedagogique, pas une causalite calculee par un Kernel reel. Voir apps/naive_vs_governed/comparison.py et docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
+    "Le test AST d'isolation du chemin Naive (tests/unit/test_naive_vs_governed.py) scanne les imports statiques (ast.Import/ImportFrom) ; il ne couvre theoriquement pas un import dynamique (importlib, __import__, eval, exec). NONE FOUND dans apps/naive_vs_governed/ (verifie par grep) — angle mort documente, pas corrige par un systeme de detection supplementaire (juge disproportionne pour ce risque)."
+  ]
+}

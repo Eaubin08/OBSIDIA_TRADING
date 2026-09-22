@@ -2,23 +2,24 @@
   "architecture_status": "CLOSED",
   "canonical_contract_version": "canonical.v1",
   "external_path_status": "PASS",
-  "freeze_version": "v0.2.1",
-  "parent_reference": "v0.2",
-  "parent_commit": "853b05e7c8d06991467b9a9d66e968f84c51bbc4",
-  "git_commit": "391aa23",
+  "freeze_version": "v0.2.2",
+  "parent_reference": "v0.2.1",
+  "parent_commit": "0c2d4f322f865534796ab0e83cd9a4f188c97a52",
+  "git_commit": "0c2d4f3",
   "commit_semantics": "git_commit est le HEAD au moment du calcul du seal, pas necessairement le HEAD actuel du depot. Pour une reference stable, utiliser reference_tag.",
-  "reference_tag": "obsidia-trading-v0.2.1-reference",
+  "reference_tag": "obsidia-trading-v0.2.2-reference",
   "version_lineage": [
     "v0.1 (commit 9e68391) -- reference historique F1-F10, intacte, tag obsidia-trading-v0.1-historical.",
     "v0.2 (commit 853b05e) -- premiere promotion de la demo Naive vs Governed, tag obsidia-trading-v0.2-reference. STATUT: SUPERSEDED. Son seal a ete verifie interne coherent (root_hash recalcule independamment = identique a celui documente pour ce commit) -- ce n'est PAS une corruption de contenu. La supersession vient de dettes de release identifiees par l'audit pre-publication suivant : README jamais mis a jour depuis F1 (aucune instruction d'installation/tests/Cockpit, demo absente), dependance python-dotenv inutilisee, .gitignore incomplet, et un champ de metadonnee 'commit' ambigu dans le seal/manifests (capture avant le commit qui l'incluait lui-meme, pas un hash de contenu errone).",
-    "v0.2.1 (commit 391aa23, ce fichier) -- corrige ces dettes de release (README reecrit, dependance retiree, gitignore durci, semantique commit/reference_tag clarifiee). Reference ACTIVE. Tag obsidia-trading-v0.2.1-reference."
+    "v0.2.1 (commit 391aa23, tag obsidia-trading-v0.2.1-reference) -- corrige ces dettes de release (README reecrit, dependance retiree, gitignore durci, semantique commit/reference_tag clarifiee). STATUT: SUPERSEDED. Son seal a egalement ete verifie interne coherent -- ce n'est PAS une corruption de contenu. La supersession vient d'un residu purement textuel : README.md (perimetre scelle) mentionnait encore 'v0.2' au lieu de 'v0.2.1' a deux endroits (titre, section Current status), laisse par inadvertance car le README avait ete reecrit dans un commit anterieur a la decision de nommer cette version v0.2.1.",
+    "v0.2.2 (ce fichier) -- corrige ce residu textuel dans README.md, aucun autre changement. Reference ACTIVE. Tag obsidia-trading-v0.2.2-reference."
   ],
   "known_boundaries": [
     "Le score structurel local (native/agents ou governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) est un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
     "Ce freeze ne prouve rien sur le comportement du Kernel X-108 de production (scelle, externe, jamais accede depuis ce repo).",
     "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia) — voir docs/SEAL_SCOPE.md pour le perimetre exact du merkle_seal.json dedie a ce repo.",
-    "Aucun remote git n'est configure pour ce repo ; aucun push n'a ete effectue a aucune etape de F1 a v0.2.1.",
-    "v0.1 (commit 9e68391, tag obsidia-trading-v0.1-historical) et v0.2 (commit 853b05e, tag obsidia-trading-v0.2-reference) restent des references historiques intactes et independamment verifiables via leurs tags Git respectifs (jamais deplaces). Ce fichier (docs/FREEZE_MANIFEST.json) est desormais la version ACTIVE (v0.2.1)."
+    "Aucun remote git n'est configure pour ce repo ; aucun push n'a ete effectue a aucune etape de F1 a v0.2.2.",
+    "v0.1 (commit 9e68391, tag obsidia-trading-v0.1-historical), v0.2 (commit 853b05e, tag obsidia-trading-v0.2-reference) et v0.2.1 (commit 391aa23, tag obsidia-trading-v0.2.1-reference) restent des references historiques intactes et independamment verifiables via leurs tags Git respectifs (jamais deplaces). Ce fichier (docs/FREEZE_MANIFEST.json) est desormais la version ACTIVE (v0.2.2)."
   ],
   "known_debts": [
     "Aucun vrai Kernel X-108 branche dans ce repo : FixtureKX108Client est TEST-ONLY (tests/test_support/), le comportement de production par defaut est UnavailableKX108Client, fail-closed (Authority.HOLD sur indisponibilite ou reponse invalide).",
@@ -40,5 +41,5 @@
   "skipped_count": 1,
   "test_count": 188,
   "timestamp": "2026-09-22T14:00:00+00:00",
-  "added_capability": "Naive vs Governed Demo (apps/naive_vs_governed/, apps/cockpit/naive_vs_governed_view.py) promoted from demo/naive-vs-governed-v1 (2d0bb8d) via merge commit 4236eda -- unchanged since v0.2. v0.2.1 adds no capability, only release-hygiene fixes (README, dependencies, .gitignore, metadata semantics). See version_lineage."
+  "added_capability": "Naive vs Governed Demo (apps/naive_vs_governed/, apps/cockpit/naive_vs_governed_view.py) promoted from demo/naive-vs-governed-v1 (2d0bb8d) via merge commit 4236eda -- unchanged since v0.2. v0.2.2 adds no capability, only a documentary residue fix (README.md active-version mentions corrected from v0.2 to v0.2.2). See version_lineage."
 }

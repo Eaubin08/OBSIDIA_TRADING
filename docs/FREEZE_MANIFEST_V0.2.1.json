@@ -1,5 +1,7 @@
 {
-  "status": "ACTIVE",
+  "status": "SUPERSEDED",
+  "superseded_by": "v0.2.2 (tag obsidia-trading-v0.2.2-reference)",
+  "supersession_reason": "Pas une corruption de contenu -- le seal de ce commit (391aa23) a ete verifie interne coherent. Supersede uniquement parce que README.md (dans le perimetre scelle) contenait encore les mentions de version actives 'v0.2' au lieu de 'v0.2.1' aux lignes 3 et 43 -- residu textuel laisse par inadvertance lors de la creation de v0.2.1 elle-meme (le README avait ete reecrit dans le commit precedent 391aa23, avant que la decision de nommer cette version v0.2.1 plutot que de patcher v0.2 en place ne soit prise dans le commit suivant). v0.2.2 corrige uniquement ce residu documentaire, sans aucun changement fonctionnel.",
   "reference_version": "v0.2.1",
   "parent_reference": "v0.2",
   "parent_commit": "853b05e7c8d06991467b9a9d66e968f84c51bbc4",

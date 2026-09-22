@@ -1,7 +1,14 @@
-# FREEZE_MANIFEST — OBSIDIA_TRADING v0.2.1 (ACTIVE)
+# FREEZE_MANIFEST — OBSIDIA_TRADING v0.2.1 (SUPERSEDED)
 
 > Résumé lisible du manifest machine `docs/FREEZE_MANIFEST_V0.2.1.json`. En cas de
 > divergence, le `.json` fait foi.
+>
+> **SUPERSEDED par v0.2.2** (tag `obsidia-trading-v0.2.2-reference`). Pas une
+> corruption de contenu — le seal de ce commit (`391aa23`) reste vérifié interne
+> cohérent. Supersession motivée uniquement par un résidu documentaire : `README.md`
+> contenait encore les mentions de version active "v0.2" (lignes 3 et 43) au lieu de
+> "v0.2.1", laissé par inadvertance lors de la création de cette version. Voir
+> `docs/FREEZE_MANIFEST_V0.2.2.md`.
 
 ## Lignée des versions
 
@@ -9,7 +16,8 @@
 |---|---|---|---|
 | v0.1 | `9e68391` | `obsidia-trading-v0.1-historical` | Référence historique F1→F10, intacte |
 | v0.2 | `853b05e` | `obsidia-trading-v0.2-reference` | **SUPERSEDED** — voir ci-dessous |
-| v0.2.1 | `391aa23` | `obsidia-trading-v0.2.1-reference` | **ACTIVE** |
+| v0.2.1 | `391aa23` | `obsidia-trading-v0.2.1-reference` | **SUPERSEDED** — résidu README, voir bandeau ci-dessus |
+| v0.2.2 | (voir `docs/FREEZE_MANIFEST_V0.2.2.md`) | `obsidia-trading-v0.2.2-reference` | **ACTIVE** |
 
 Aucun tag existant n'a été déplacé ni réécrit. Chaque version reste vérifiable indépendamment.
 
