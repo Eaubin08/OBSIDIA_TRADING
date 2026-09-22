@@ -1464,3 +1464,39 @@ Audit read-only initial : `domains/trading/trading_x108_gate.py` (core) delegue 
 
 ### Verdict
 **F12_1_REFERENCE_RUNTIME_CLOSED** — la combinaison dangereuse (vrai Kernel + preuve best-effort silencieuse) est desormais structurellement impossible a construire, verifiee par 8 tests dedies, sans casser aucun usage BEST_EFFORT existant ni toucher au Kernel.
+
+## F13 — Real Trading Domain Calibration (feature/f13-real-trading-calibration)
+
+**Constat central, verifie et non suppose** : cet environnement n'a jamais eu de credentials Alpaca reels configures (`ALPACA_API_KEY`/`ALPACA_SECRET_KEY` vides partout, `.env.example` uniquement). Un appel direct sans cle a `https://data.alpaca.markets/v2/stocks/AAPL/bars` retourne `401 Unauthorized` (teste explicitement, pas suppose). **Aucune donnee de marche reelle n'est accessible depuis cette machine.**
+
+**Consequence assumee, pas contournee** : F13 ne peut donc PAS produire de calibration reposant sur des observations reelles. Construire une calibration avec des donnees synthetiques presentees comme reelles serait exactement l'inverse de l'objectif F13 (interdiction explicite). L'infrastructure est construite, testee, prete a recevoir de vraies donnees des qu'elles seront accessibles — mais aucune fermeture ne peut etre declaree.
+
+**Audit des modeles existants (A)** :
+- 17 agents (`native/agents/domains/trading_agents.py`) : tous les seuils sont **FIXED/HEURISTIC**, codes en dur (ex. `change > 0.001`, `spread < 12`, `rv20 > rv60*1.3`, `risk > 0.7`) — aucun mecanisme de fitting existant, confirme par `grep "def fit|def calibrat"` -> 0 resultat.
+- `simulation/trading_world/market_process.py` : GARCH(1,1) — `garch_alpha/beta/omega` sont des champs de `MarketProcessParams` **jamais fittes**, toujours passes en dur par l'appelant -> **UNCALIBRATED**.
+- `build_regime_matrix` (Markov) — deja connu depuis F4 comme non calibre (auto-transition artificielle) -> **UNCALIBRATED**, confirme, non masque.
+- Aucune fonction de fitting/calibration n'existait nulle part avant F13.
+
+**Infrastructure creee (C)** :
+- `domain/calibration.py` : `CalibrationPack`, `DatasetDescriptor`, `ModelCalibration` — versionnage complet (calibration_id/schema_version/dataset_digest/parameters_digest/created_at/method), determinisme prouve par test, `status` honnete (`NOT_CALIBRATED_NO_REAL_DATA` si `dataset.is_real` est faux).
+- `market/adapters/alpaca/real_dataset_attempt.py` : tentative honnete d'obtention de barres Alpaca reelles — retourne toujours un `DatasetDescriptor` avec `observation_count=0` et `quality_flags` explicite (`NO_CREDENTIALS_CONFIGURED` dans cet environnement), jamais une exception qui masquerait le resultat, jamais une valeur inventee.
+- `tests/unit/test_calibration_pack.py` (13 tests) : determinisme, digests, provenance, statut honnete d'absence de donnees, Markov/GARCH marques UNCALIBRATED sans les cacher, aucun couplage External->calibration Native, canonical builder intact, **aucun import governance/execution.binder dans le code de calibration** (verifie par AST, pas texte).
+- Roster natif (F3) et `external/` (F8) **non modifies** — verifie par test (`"calibration" not in src.lower()`).
+- Real Kernel round-trip (F12) relance et toujours PASS (3/3, 11.56s) — le Kernel n'a pas ete affecte par F13.
+
+**Modeles (D)** : GBM = input synthetique uniquement (pas de fitting possible sans donnees reelles) ; Markov = **UNCALIBRATED** (confirme, documente) ; GARCH(1,1) = **UNCALIBRATED** (parametres fixes, jamais fittes) ; Merton jumps = parametres fixes ; bootstrap (`simulation/monte_carlo/bootstrap.py`) = concu pour accepter une serie reelle mais aucune serie reelle disponible pour l'alimenter dans cet environnement ; VaR/ES/Sharpe/MaxDrawdown = calculs corrects (F4) mais appliques a des trajectoires non calibrees.
+
+**Kernel boundary (J)** : `git status --short` sur le core -> uniquement le diff `merkle_seal.json` preexistant (identique depuis le debut de session), `git log -1` inchange (`c306fa33`). `KERNEL FILES MODIFIED = 0`.
+
+**Tests** : `pytest tests/ -q` -> 237 passed, 1 skipped, 1 failed (flip de scope seal attendu — 2 nouveaux fichiers de production dans le perimetre scelle, `domain/calibration.py` + `market/adapters/alpaca/real_dataset_attempt.py`), **0 regression fonctionnelle** sur les 224 precedents.
+
+**Dette restante (K)**, aucune cachee :
+1. Zero donnee de marche reelle utilisee — c'est le blocage central, pas une omission.
+2. Aucun modele (GBM/Markov/GARCH/jumps) n'est reellement calibre.
+3. Pas de matrice d'evaluation multi-periodes (necessite des donnees reelles).
+4. Pas de separation train/validation (necessite des donnees reelles).
+5. Les 17 agents ne consomment pas encore de `CalibrationPack` (aucune raison de le faire cablé sans vraies donnees pour l'alimenter).
+6. Certains agents (ex. `LiquidityAgent`) retombent silencieusement sur une valeur par defaut (`spreads_bps[-1] if ... else 0.0`) plutot que de produire un `unknown` explicite quand la donnee manque — gap identifie, non corrige ici (modifier les 17 agents est hors scope F13 sauf necessite demontree, et ce n'est pas un defaut introduit par F13).
+
+### Verdict
+**F13_REAL_TRADING_CALIBRATION_NOT_CLOSED** — l'infrastructure de calibration est construite, deterministe, testee et honnete sur son propre etat, mais aucune calibration reelle n'a pu etre effectuee faute d'acces a des donnees de marche reelles dans cet environnement (verifie par un appel HTTP direct, pas suppose). Reprendre F13 des que des credentials Alpaca reels seront disponibles : `attempt_real_historical_dataset` et `CalibrationPack` sont concus pour recevoir ces donnees sans modification.
