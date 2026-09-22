@@ -1,21 +1,19 @@
 {
-  "status": "SUPERSEDED",
-  "superseded_by": "v0.3.2",
-  "superseded_reason": "metadata hygiene only -- reference_tag in merkle_seal.json and scripts/compute_seal.py still pointed to obsidia-trading-v0.3-reference instead of obsidia-trading-v0.3.1-reference. No functional change, no seal content defect: the root_hash and sealed_file_count of v0.3.1 were and remain correct. See docs/FREEZE_MANIFEST_V0.3.2.json.",
-  "reference_version": "v0.3.1",
-  "parent_reference": "v0.3",
-  "parent_commit": "07505c3983aa8a0c7e3a5f9cc0b1f6c38d117a59",
-  "commit_semantics": "parent_commit identifie le commit v0.3 dont le contenu fonctionnel est repris a l'identique ; reference_tag identifie la reference stable de cette version. Ce manifest ne recopie plus le root_hash litteralement -- voir merkle_seal.json a la racine du repo pour la valeur active, calculee une seule fois par scripts/compute_seal.py apres finalisation de tout contenu scelle.",
-  "reference_tag": "obsidia-trading-v0.3.1-reference",
+  "status": "ACTIVE",
+  "reference_version": "v0.3.2",
+  "parent_reference": "v0.3.1",
+  "parent_commit": "26613320cca382c3ec087a325c2b548a71ee9dcd",
+  "commit_semantics": "parent_commit identifie le commit v0.3.1 dont le contenu fonctionnel est repris a l'identique ; reference_tag identifie la reference stable de cette version. Ce manifest ne recopie jamais le root_hash litteralement -- voir merkle_seal.json a la racine du repo pour la valeur active, calculee une seule fois par scripts/compute_seal.py apres finalisation de tout contenu scelle.",
+  "reference_tag": "obsidia-trading-v0.3.2-reference",
   "project": "OBSIDIA_TRADING",
-  "supersedes": "v0.3",
-  "supersedes_reason": "corrige une incoherence de metadonnees de release (expected_root_hash et test_count perimes dans les manifests v0.3, causee par une boucle auto-referente : le manifest scelle docs/FREEZE_MANIFEST.md embarquait une copie litterale de son propre root_hash). Aucun changement fonctionnel, aucune nouvelle capacite.",
+  "supersedes": "v0.3.1",
+  "supersedes_reason": "metadata hygiene only -- scripts/compute_seal.py et merkle_seal.json contenaient encore reference_tag=obsidia-trading-v0.3-reference (perime, aurait du etre v0.3.1). Aucun changement fonctionnel, aucune nouvelle capacite. Corrige la generation future du seal pour qu'elle porte toujours le bon reference_tag.",
   "test_count": 284,
   "skipped_count": 1,
   "failed_count": 0,
   "test_count_semantics": "test_count designe le nombre de tests PASSES uniquement (pas passed+skipped). total_collected = test_count + skipped_count.",
   "total_collected": 285,
-  "test_basis": "Suite locale sur master : 284 tests passes, 1 skipped, 0 echec. Identique fonctionnellement a v0.3 (283 passed documente a tort dans le manifest v0.3 -- le vrai chiffre au moment du freeze v0.3 etait deja 284, corrige ici).",
+  "test_basis": "Suite locale sur master : 284 tests passes, 1 skipped, 0 echec. Identique fonctionnellement a v0.3.1 -- aucun test ajoute, retire ou modifie par ce correctif.",
   "architecture_status": "CLOSED",
   "canonical_convergence_status": "CLOSED",
   "native_status": "PASS",
@@ -43,10 +41,10 @@
   "remote_repository": "Eaubin08/OBSIDIA_TRADING",
   "remote_visibility": "private",
   "remote_reproducibility_status": "PRIVATE_REMOTE_REPRODUCIBLE",
-  "added_capability": "Aucune -- correctif de metadonnees de release uniquement (voir supersedes_reason). Capacites fonctionnelles heritees de v0.3 : F11 PROOF_REQUIRED, F12 integration reelle du Kernel X-108, F12.1 garde-fou par construction, F13 calibration reelle Alpaca, F13.1 consommation de calibration.",
+  "added_capability": "Aucune -- correctif de metadonnees de release uniquement (voir supersedes_reason). Capacites fonctionnelles heritees de v0.3.1/v0.3 : F11 PROOF_REQUIRED, F12 integration reelle du Kernel X-108, F12.1 garde-fou par construction, F13 calibration reelle Alpaca, F13.1 consommation de calibration.",
   "seal_algorithm": "SHA-256 sur liste canonique JSON de [path,file_hash], file_hash calculant SHA-256 apres normalisation CRLF->LF puis CR->LF pour les fichiers texte scelles.",
   "seal_cross_platform": "DETERMINISTIC_LF_CANONICALIZATION",
-  "seal_root_reference": "Voir merkle_seal.json a la racine du repo pour root_hash et sealed_file_count actifs. Ce manifest ne recopie plus ces valeurs pour eviter la boucle auto-referente qui a motive v0.3.1.",
+  "seal_root_reference": "Voir merkle_seal.json a la racine du repo pour root_hash et sealed_file_count actifs. Ce manifest ne recopie jamais ces valeurs pour eviter la boucle auto-referente qui a motive v0.3.1.",
   "paper_only": "ENFORCED",
   "live_trading": "FORBIDDEN",
   "known_boundaries": [
@@ -54,9 +52,9 @@
     "Le Kernel X-108 reel observe en F12 retourne la cle x108_gate, pas verdict comme l'attendait le gate historique du core -- ecart de contrat preexistant du core, normalise cote Trading uniquement, jamais corrige dans le core (hors perimetre).",
     "Ce freeze ne prouve rien sur le comportement du Kernel X-108 en environnement de production reel au-dela de ce qui a ete effectivement observe par round-trip local.",
     "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia).",
-    "Remote GitHub prive configure : Eaubin08/OBSIDIA_TRADING. Reproductibilite clone-vierge validee jusqu'a v0.2.2 ; non revalidee via un nouveau clone pour v0.3/v0.3.1 dans cette session (voir known_debts).",
-    "Les references v0.1 a v0.3 restent historiques et non reecrites via leurs tags respectifs. v0.3.1 est la reference active.",
-    "Un manifest scelle ne doit plus jamais recopier litteralement un root_hash -- lecon de v0.3, appliquee ici."
+    "Remote GitHub prive configure : Eaubin08/OBSIDIA_TRADING. Reproductibilite clone-vierge validee jusqu'a v0.2.2 ; non revalidee via un nouveau clone pour v0.3/v0.3.1/v0.3.2 dans cette session (voir known_debts).",
+    "Les references v0.1 a v0.3.1 restent historiques et non reecrites via leurs tags respectifs. v0.3.2 est la reference active.",
+    "Un manifest scelle ne doit plus jamais recopier litteralement un root_hash -- lecon de v0.3, appliquee ici et dans les versions suivantes."
   ],
   "known_debts": [
     "Calibration reelle mono-symbole (AAPL uniquement) et mono-fenetre (171 barres quotidiennes observees au moment de F13) -- aucune diversite d'actifs ni de regime de marche multiple.",
@@ -69,6 +67,6 @@
     "Packs de tests formels du Kernel (MVP-obsidia-) restent NOT_PORTABLE, hors perimetre inspectable depuis ce repo.",
     "Les verdicts TEST FIXTURE KX108 des scenarios B et C de la demo Naive vs Governed restent des configurations narratives fixees a l'avance, pas une causalite calculee.",
     "Le test AST d'isolation du chemin Naive ne couvre theoriquement pas un import dynamique (importlib, __import__, eval, exec) -- NONE FOUND au moment de ce freeze, angle mort documente non corrige.",
-    "v0.3/v0.3.1 n'ont pas ete revalidees depuis un clone GitHub vierge independant dans cette session (contrairement a v0.2.2) -- la reproductibilite distante reste PRIVATE_REMOTE_REPRODUCIBLE par heritage des versions precedentes, pas re-testee explicitement pour ce contenu."
+    "v0.3/v0.3.1/v0.3.2 n'ont pas ete revalidees depuis un clone GitHub vierge independant dans cette session (contrairement a v0.2.2) -- la reproductibilite distante reste PRIVATE_REMOTE_REPRODUCIBLE par heritage des versions precedentes, pas re-testee explicitement pour ce contenu."
   ]
 }

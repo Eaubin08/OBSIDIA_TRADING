@@ -1,6 +1,6 @@
-# FREEZE_MANIFEST — OBSIDIA_TRADING v0.3.1 (ACTIVE)
+# FREEZE_MANIFEST — OBSIDIA_TRADING v0.3.2 (ACTIVE)
 
-> Résumé lisible du manifest machine `docs/FREEZE_MANIFEST_V0.3.1.json`. En cas de divergence, le `.json` fait foi.
+> Résumé lisible du manifest machine `docs/FREEZE_MANIFEST_V0.3.2.json`. En cas de divergence, le `.json` fait foi.
 
 ## Lignée
 
@@ -13,9 +13,14 @@
 | v0.2.3 | `c66b379` | `obsidia-trading-v0.2.3-reference` | SUPERSEDED |
 | v0.2.4 | `6864d38` | `obsidia-trading-v0.2.4-reference` | SUPERSEDED — seal cross-platform, aucun défaut fonctionnel |
 | v0.3 | `07505c3` | `obsidia-trading-v0.3-reference` | SUPERSEDED — incohérence de métadonnées de release uniquement (voir ci-dessous), seal réel non corrompu |
-| v0.3.1 | parent `07505c3` | `obsidia-trading-v0.3.1-reference` | **ACTIVE** |
+| v0.3.1 | `2661332` | `obsidia-trading-v0.3.1-reference` | SUPERSEDED — `reference_tag` périmé uniquement, seal réel non corrompu |
+| v0.3.2 | parent `2661332` | `obsidia-trading-v0.3.2-reference` | **ACTIVE** |
 
-Aucun tag historique n'a été déplacé. `obsidia-trading-v0.3-reference` reste sur `07505c3`.
+Aucun tag historique n'a été déplacé. `obsidia-trading-v0.3-reference` reste sur `07505c3`, `obsidia-trading-v0.3.1-reference` reste sur `2661332`.
+
+## Pourquoi v0.3.1 est SUPERSEDED (hygiène supplémentaire)
+
+`scripts/compute_seal.py` et `merkle_seal.json` contenaient encore `reference_tag = obsidia-trading-v0.3-reference` (périmé d'une version) au lieu de `obsidia-trading-v0.3.1-reference`. Aucun impact sur le contenu réel du seal — `root_hash`/`sealed_file_count` de v0.3.1 étaient et restent corrects. v0.3.2 corrige uniquement cette référence dans le script de génération.
 
 ## Pourquoi v0.3 est SUPERSEDED (pas corrompue)
 
@@ -25,11 +30,11 @@ Le manifest scellé v0.3 (`docs/FREEZE_MANIFEST.md` à ce moment-là) embarquait
 
 **Correction v0.3.1** : ce document (`docs/FREEZE_MANIFEST.md`) ne recopie plus jamais de `root_hash` littéral — voir `merkle_seal.json` à la racine du repo pour la valeur active, calculée une seule fois par `scripts/compute_seal.py` après la finalisation de tout contenu scellé.
 
-## Ce que v0.3.1 promeut
+## Ce que v0.3.2 promeut
 
-Aucune nouvelle capacité fonctionnelle par rapport à v0.3 — uniquement une correction de métadonnées de release (voir ci-dessus) et une clarification de la sémantique de comptage de tests : `test_count` désigne désormais explicitement le nombre de tests **passés** (pas passés+skipped).
+Aucune nouvelle capacité fonctionnelle par rapport à v0.3.1 — uniquement la correction du `reference_tag` périmé dans `scripts/compute_seal.py` (voir ci-dessus).
 
-Rappel du contenu fonctionnel hérité de v0.3 (F11→F13.1), inchangé :
+Rappel du contenu fonctionnel hérité de v0.3/v0.3.1 (F11→F13.1), inchangé :
 
 - **F11 — PROOF_REQUIRED** : deux politiques de preuve coexistent explicitement (`BEST_EFFORT` héritée, `REQUIRED` pour le chemin critique). Sous `REQUIRED`, une preuve injoignable bloque l'exécution *avant* tout appel broker. Un succès broker suivi d'un échec de persistance finale n'est jamais présenté comme un succès ou un échec — `ProofOutcome.EXECUTION_SUCCEEDED_PROOF_INCOMPLETE` préserve l'incertitude réelle. La chaîne de receipts n'avance jamais sur un receipt jamais persisté.
 - **F12 — Real KX108 Integration** : `RealKX108Client` joint réellement le Kernel X-108 scellé du core (`server.kernel.sealed.cjs`, `POST /kernel/ragnarok`, port 3001), jamais modifié. Round-trip réel confirmé pour les chemins Native et External. Écart de contrat découvert et documenté (`x108_gate` vs `verdict` attendu par le gate historique du core) — normalisé côté Trading uniquement, jamais corrigé dans le core.
@@ -53,13 +58,13 @@ Rappel du contenu fonctionnel hérité de v0.3 (F11→F13.1), inchangé :
 
 ## Validation
 
-`pytest tests/ -q` sur `master` : **284 tests passés (`test_count`), 1 skipped (`skipped_count`), 0 échec (`failed_count`)**. Seal v0.3.1 recalculé une seule fois via `scripts/compute_seal.py` (mécanisme cross-platform introduit en v0.2.4, jamais calculé à la main) après finalisation de tout le contenu scellé — root actif : voir `merkle_seal.json` à la racine du repo. `tests/unit/test_freeze_manifest.py` **vert**.
+`pytest tests/ -q` sur `master` : **284 tests passés (`test_count`), 1 skipped (`skipped_count`), 0 échec (`failed_count`)** — inchangé par rapport à v0.3.1. Seal v0.3.2 recalculé une seule fois via `scripts/compute_seal.py` (mécanisme cross-platform introduit en v0.2.4, jamais calculé à la main) après finalisation de tout le contenu scellé — root actif : voir `merkle_seal.json` à la racine du repo. `tests/unit/test_freeze_manifest.py` **vert**.
 
 Kernel boundary : `KERNEL FILES MODIFIED = 0`, `KERNEL COMMITS CREATED = 0`, `KERNEL TAGS MOVED = 0` (vérifié avant et après chaque round-trip réel).
 
 Secrets : `SECRETS_COMMITTED = 0`, `SECRETS_LOGGED = 0` (grep exhaustif sur tout l'historique git).
 
-Remote : `Eaubin08/OBSIDIA_TRADING` — **PRIVATE**. Reproductibilité clone-vierge validée jusqu'à v0.2.2 ; non re-testée explicitement pour le contenu v0.3/v0.3.1 dans cette session (dette documentée).
+Remote : `Eaubin08/OBSIDIA_TRADING` — **PRIVATE**. Reproductibilité clone-vierge validée jusqu'à v0.2.2 ; non re-testée explicitement pour le contenu v0.3/v0.3.1/v0.3.2 dans cette session (dette documentée).
 
 ## Dettes connues (non masquées)
 
@@ -72,7 +77,7 @@ Remote : `Eaubin08/OBSIDIA_TRADING` — **PRIVATE**. Reproductibilité clone-vie
 - Packs de tests formels du Kernel `NOT_PORTABLE`.
 - Verdicts fixture des scénarios B/C de la démo Naive vs Governed = configurations narratives, pas une causalité calculée.
 - Angle mort théorique du test AST d'isolation Naive sur les imports dynamiques (aucun trouvé, non corrigé par un système dédié).
-- v0.3/v0.3.1 non revalidées depuis un clone GitHub vierge indépendant dans cette session.
-- Un manifest scellé ne doit plus jamais recopier littéralement un `root_hash` — leçon de v0.3, appliquée ici.
+- v0.3/v0.3.1/v0.3.2 non revalidées depuis un clone GitHub vierge indépendant dans cette session.
+- Un manifest scellé ne doit plus jamais recopier littéralement un `root_hash` — leçon de v0.3, appliquée ici et dans les versions suivantes.
 
-PAPER ONLY. Pas de trading live. v0.3.1 n'est pas une release live.
+PAPER ONLY. Pas de trading live. v0.3.2 n'est pas une release live.

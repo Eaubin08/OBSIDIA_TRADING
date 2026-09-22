@@ -1,6 +1,8 @@
-# FREEZE_MANIFEST_V0.3.1 — OBSIDIA_TRADING (ACTIVE)
+# FREEZE_MANIFEST_V0.3.1 — OBSIDIA_TRADING (SUPERSEDED)
 
-> Copie versionnée archivée du manifest actif. `docs/FREEZE_MANIFEST.md` (racine) reflète toujours la version active courante ; ce fichier reste la référence figée pour v0.3.1 spécifiquement.
+> **SUPERSEDED par v0.3.2** — raison : hygiène de métadonnées uniquement (`reference_tag` périmé dans `scripts/compute_seal.py`/`merkle_seal.json`, pointait encore vers `obsidia-trading-v0.3-reference` au lieu de `obsidia-trading-v0.3.1-reference`). Aucun changement fonctionnel, aucun défaut de contenu du seal — le `root_hash`/`sealed_file_count` de v0.3.1 étaient et restent corrects. Voir `docs/FREEZE_MANIFEST_V0.3.2.md`.
+>
+> Copie versionnée archivée du manifest actif au moment de v0.3.1. `docs/FREEZE_MANIFEST.md` (racine) reflète toujours la version active courante ; ce fichier reste la référence figée pour v0.3.1 spécifiquement.
 
 ## Pourquoi v0.3.1 existe
 

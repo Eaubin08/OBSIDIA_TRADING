@@ -2,12 +2,12 @@
   "architecture_status": "CLOSED",
   "canonical_contract_version": "canonical.v1",
   "external_path_status": "PASS",
-  "freeze_version": "v0.3.1",
-  "parent_reference": "v0.3",
-  "parent_commit": "07505c3983aa8a0c7e3a5f9cc0b1f6c38d117a59",
-  "git_commit": "07505c3",
-  "commit_semantics": "git_commit/parent_commit designent le commit v0.3 dont le contenu fonctionnel est repris a l'identique par v0.3.1. La reference stable est reference_tag. Ce manifest ne recopie plus jamais de root_hash litteral -- voir merkle_seal.json a la racine pour la valeur active.",
-  "reference_tag": "obsidia-trading-v0.3.1-reference",
+  "freeze_version": "v0.3.2",
+  "parent_reference": "v0.3.1",
+  "parent_commit": "26613320cca382c3ec087a325c2b548a71ee9dcd",
+  "git_commit": "2661332",
+  "commit_semantics": "git_commit/parent_commit designent le commit v0.3.1 dont le contenu fonctionnel est repris a l'identique par v0.3.2. La reference stable est reference_tag. Ce manifest ne recopie jamais de root_hash litteral -- voir merkle_seal.json a la racine pour la valeur active.",
+  "reference_tag": "obsidia-trading-v0.3.2-reference",
   "version_lineage": [
     "v0.1 (commit 9e68391) -- reference historique F1-F10, intacte, tag obsidia-trading-v0.1-historical.",
     "v0.2 (commit 853b05e) -- premiere promotion de la demo Naive vs Governed, tag obsidia-trading-v0.2-reference. STATUT: SUPERSEDED, seal interne coherent.",
@@ -16,15 +16,16 @@
     "v0.2.3 (commit c66b379) -- SUPERSEDED : tag cree avant correction autoritative du merkle_seal.json (sensibilite fins de ligne).",
     "v0.2.4 (commit 6864d38) -- seal cross-platform (CRLF/CR -> LF avant SHA-256). STATUT: SUPERSEDED par v0.3, aucun defaut fonctionnel.",
     "v0.3 (commit 07505c3, merge --no-ff de feature/f13-1-calibration-consumption) -- promotion de F11+F12+F12.1+F13+F13.1. STATUT: SUPERSEDED par v0.3.1 -- incoherence de metadonnees de release uniquement (expected_root_hash/test_count perimes par une boucle auto-referente dans le manifest scelle), seal reel non corrompu, aucune regression fonctionnelle. Voir docs/FREEZE_MANIFEST_V0.3.json.",
-    "v0.3.1 (parent 07505c3, meme contenu fonctionnel que v0.3) -- corrige la boucle auto-referente du manifest scelle et la semantique de comptage de tests (test_count = tests passes uniquement). Reference ACTIVE. Tag obsidia-trading-v0.3.1-reference."
+    "v0.3.1 (commit 2661332, parent 07505c3, meme contenu fonctionnel que v0.3) -- corrige la boucle auto-referente du manifest scelle et la semantique de comptage de tests (test_count = tests passes uniquement). STATUT: SUPERSEDED par v0.3.2 -- reference_tag perime uniquement (scripts/compute_seal.py et merkle_seal.json pointaient encore vers obsidia-trading-v0.3-reference), seal reel non corrompu, aucune regression fonctionnelle. Voir docs/FREEZE_MANIFEST_V0.3.1.json.",
+    "v0.3.2 (parent 2661332, meme contenu fonctionnel que v0.3.1) -- corrige le reference_tag perime dans scripts/compute_seal.py. Reference ACTIVE. Tag obsidia-trading-v0.3.2-reference."
   ],
   "known_boundaries": [
     "Le score structurel local (governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) reste un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
     "Le Kernel X-108 reel observe en F12 retourne la cle x108_gate, pas verdict comme l'attendait le gate historique du core -- ecart de contrat preexistant du core, normalise cote Trading uniquement (governance/bridge/kx108_client.py::RealKX108Client), jamais corrige dans le core (hors perimetre).",
     "Ce freeze ne prouve rien sur le comportement du Kernel X-108 en environnement de production reel au-dela de ce qui a ete effectivement observe par round-trip local.",
     "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia).",
-    "Remote GitHub prive configure : Eaubin08/OBSIDIA_TRADING. Reproductibilite clone-vierge validee jusqu'a v0.2.2 ; non revalidee via un nouveau clone pour v0.3/v0.3.1 dans cette session.",
-    "Les references v0.1 a v0.3 restent historiques et non reecrites via leurs tags respectifs. v0.3.1 est la reference active.",
+    "Remote GitHub prive configure : Eaubin08/OBSIDIA_TRADING. Reproductibilite clone-vierge validee jusqu'a v0.2.2 ; non revalidee via un nouveau clone pour v0.3/v0.3.1/v0.3.2 dans cette session.",
+    "Les references v0.1 a v0.3.1 restent historiques et non reecrites via leurs tags respectifs. v0.3.2 est la reference active.",
     "Un manifest scelle ne doit plus jamais recopier litteralement un root_hash -- lecon de v0.3, appliquee ici."
   ],
   "known_debts": [
@@ -38,7 +39,7 @@
     "Packs de tests formels du Kernel (MVP-obsidia-) restent NOT_PORTABLE, hors perimetre inspectable depuis ce repo.",
     "Les verdicts TEST FIXTURE KX108 des scenarios B et C de la demo Naive vs Governed restent des configurations narratives fixees a l'avance, pas une causalite calculee.",
     "Le test AST d'isolation du chemin Naive ne couvre theoriquement pas un import dynamique (importlib, __import__, eval, exec) -- NONE FOUND au moment de ce freeze, angle mort documente non corrige.",
-    "v0.3/v0.3.1 n'ont pas ete revalidees depuis un clone GitHub vierge independant dans cette session (contrairement a v0.2.2) -- la reproductibilite distante reste PRIVATE_REMOTE_REPRODUCIBLE par heritage des versions precedentes, pas re-testee explicitement pour ce contenu."
+    "v0.3/v0.3.1/v0.3.2 n'ont pas ete revalidees depuis un clone GitHub vierge independant dans cette session (contrairement a v0.2.2) -- la reproductibilite distante reste PRIVATE_REMOTE_REPRODUCIBLE par heritage des versions precedentes, pas re-testee explicitement pour ce contenu."
   ],
   "kx108_status": "REAL_KERNEL_INTEGRATED_NOT_DEFAULT",
   "kx108_status_detail": "Un vrai Kernel X-108 (server.kernel.sealed.cjs du core Obsidia, POST /kernel/ragnarok, port 3001) a ete reellement joint et observe (F12) : round-trip complet Native et External confirme par execution reelle, jamais suppose. Le comportement de PRODUCTION PAR DEFAUT de ce repo reste neanmoins UnavailableKX108Client (fail-closed, Authority.HOLD) tant qu'aucune configuration explicite n'injecte RealKX108Client.",
@@ -63,7 +64,7 @@
   "test_count_semantics": "test_count designe le nombre de tests PASSES uniquement (historique OBSIDIA_TRADING). total_collected = test_count + skipped_count.",
   "total_collected": 285,
   "timestamp": "2026-09-23T00:00:00+00:00",
-  "added_capability": "Aucune nouvelle capacite fonctionnelle par rapport a v0.3 -- correctif de metadonnees de release uniquement (boucle auto-referente du manifest scelle, semantique test_count). Capacites heritees : F11 PROOF_REQUIRED, F12 integration reelle du Kernel X-108, F12.1 garde-fou par construction, F13 calibration reelle Alpaca, F13.1 consommation de calibration.",
+  "added_capability": "Aucune nouvelle capacite fonctionnelle par rapport a v0.3.1 -- correctif de metadonnees de release uniquement (reference_tag perime dans scripts/compute_seal.py et merkle_seal.json). Capacites heritees : F11 PROOF_REQUIRED, F12 integration reelle du Kernel X-108, F12.1 garde-fou par construction, F13 calibration reelle Alpaca, F13.1 consommation de calibration.",
   "remote_repository": "Eaubin08/OBSIDIA_TRADING",
   "remote_visibility": "private",
   "remote_reproducibility_status": "PRIVATE_REMOTE_REPRODUCIBLE",

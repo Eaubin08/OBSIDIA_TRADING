@@ -1,12 +1,12 @@
 {
-  "commit": "07505c3983aa8a0c7e3a5f9cc0b1f6c38d117a59",
+  "commit": "26613320cca382c3ec087a325c2b548a71ee9dcd",
   "commit_semantics": "'commit' est le HEAD au moment ou ce script a lu l'arbre de travail. Un commit ulterieur peut exister sans que le contenu scelle change (ex: un commit qui enregistre ce fichier lui-meme). Pour une reference stable, utiliser reference_tag plutot que ce champ.",
-  "generation_timestamp": "2026-09-22T22:51:29.824991+00:00",
+  "generation_timestamp": "2026-09-22T23:16:17.599899+00:00",
   "hash_algorithm": "SHA-256",
   "note": "Ce seal couvre uniquement le code de production et les docs de gouvernance listes dans docs/SEAL_SCOPE.md. Il ne prouve rien sur le Kernel X-108 reel, ni sur les sources historiques externes.",
   "project": "OBSIDIA_TRADING",
-  "reference_tag": "obsidia-trading-v0.3-reference",
-  "root_hash": "7dbab2a6816f1d2f3fe87a387e3925ee20359920742c8089939a0b75b92489c2",
+  "reference_tag": "obsidia-trading-v0.3.2-reference",
+  "root_hash": "a51b8fb0211fd3a5f12cebe73b828524a0dad99f379e30285daea04e22cffca0",
   "scope_document": "docs/SEAL_SCOPE.md",
   "sealed_file_count": 93,
   "status": "INTEGRITY_VERIFIED"
