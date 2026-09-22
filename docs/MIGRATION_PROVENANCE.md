@@ -1338,3 +1338,34 @@ HISTORICAL REGRESSION: PASS
 KNOWN REGRESSIONS: 0
 FREEZE: SEALED
 ```
+
+## DEMO — Naive vs Governed (branche demo/naive-vs-governed-v1)
+
+> Post-freeze. Branche locale créée depuis le commit F10 gelé `9e68391` (préservé, vérifié intact). Ferme uniquement la dette F10 "Naive vs Governed demo missing" — aucune autre dette F10 n'est traitée ici.
+
+### Fichiers créés/modifiés
+- `apps/naive_vs_governed/__init__.py` (nouveau)
+- `apps/naive_vs_governed/naive_path.py` (nouveau) — chemin Naive isolé
+- `apps/naive_vs_governed/comparison.py` (nouveau) — assemble Naive + réutilise le runtime Governed existant
+- `apps/cockpit/naive_vs_governed_view.py` (nouveau) — rendu Streamlit fin
+- `apps/cockpit/app.py` (modifié) — ajout d'un sélecteur de vue sidebar ("Cockpit" / "Naive vs Governed"), aucune logique de gouvernance touchée
+- `tests/unit/test_naive_vs_governed.py` (nouveau) — 12 tests
+
+### Interdictions respectées (diff vide confirmé contre le commit F10 gelé `9e68391`)
+`domain/contracts/canonical.py`, `governance/`, `execution/binder/`, `proof/receipts/`, `domain/provenance.py`, `docs/FREEZE_MANIFEST.{json,md}`, `merkle_seal.json` — **aucun n'a été modifié**.
+
+### Architecture Naive — isolation
+`apps/naive_vs_governed/naive_path.py` importe uniquement `domain.market` (types de données), `native.agents.contracts` (TradingState/AgentVote) et `native.agents.domains.trading_agents` (les 17 classes d'agents, directement — jamais via `native/agents/adapter.py`, pour éviter toute dépendance transitive vers `domain.contracts.canonical`). Duplication volontaire et minimale d'une fonction de transformation (bars→TradingState) documentée en docstring, pour garantir une isolation structurelle réelle plutôt que supposée. Aucun import de `governance.*`, `execution.binder`, `market.adapters.alpaca` — prouvé par tests AST (tests 1-3).
+
+### Architecture Governed — aucune duplication
+`apps/naive_vs_governed/comparison.py` réutilise `apps.cockpit.scenarios.run_scenario` et `apps.cockpit.presenter.build_cockpit_view` tels quels (F9). 6 des 7 scénarios (A, B, C, D, F, G) réutilisent directement les `ScenarioSpec` déjà existants (`native_act_paper_success`, `native_hold`, `native_block`, `act_binder_refuses`, `broker_failure`, `external_act`/`external_block`) — aucune nouvelle logique de scénario. Le scénario E (LIVE interdit) ne construit aucun `CycleEngine` : il réutilise `execution.binder.paper_execution.require_paper_mode` tel quel (non modifié) pour prouver le refus structurel avant toute connexion.
+
+### Point découvert et documenté honnêtement — non résolu ici
+Le périmètre du seal F10 (`docs/SEAL_SCOPE.md`) inclut `apps/**/*.py`. L'ajout des nouveaux fichiers de démo sous `apps/` fait donc légitimement échouer `tests/unit/test_freeze_manifest.py::test_merkle_seal_exists_and_root_hash_is_recomputable` (83 fichiers attendus au moment du seal vs 87 réellement présents sur cette branche). **Ce n'est pas une régression du code migré** : le seal lui-même (`merkle_seal.json`, `docs/FREEZE_MANIFEST.json`) reste bit-identique au commit F10 (diff vide confirmé) — c'est le test de cohérence qui détecte correctement une dérive de périmètre, exactement son rôle. Aucune tentative n'a été faite pour régénérer le seal ou modifier ce test depuis cette branche de démo — cela reviendrait à masquer le changement, ce qui est explicitement interdit. Décision à prendre séparément par l'utilisateur (scope de seal dédié pour les branches démo, ou régénération explicite lors d'un futur merge).
+
+### Tests
+`pytest tests/unit/test_naive_vs_governed.py -q` → **11/11 PASS**.
+`pytest tests/ -q` (suite complète, y compris le nouveau fichier) → **183 passed, 1 skipped, 1 failed**. Isolé : sur les 173 tests de la baseline F10, **172 passent, 1 échoue** (le test de cohérence de périmètre du seal, ci-dessus — comportement attendu, pas une régression du code F1-F10). Les 11 nouveaux tests passent tous.
+
+### Statut
+DONE, avec le point de seal-scope documenté ci-dessus comme dette explicite de cette branche démo (pas cachée).
