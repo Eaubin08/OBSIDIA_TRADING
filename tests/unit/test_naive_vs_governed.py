@@ -182,16 +182,26 @@ def test_replay_has_zero_broker_calls_in_naive_vs_governed_context(tmp_path):
 
 def test_f10_freeze_baseline_untouched():
     """
-    Ce test ne recalcule PAS le seal (scripts/compute_seal.py ecrit en
-    place — a eviter dans un test). Il verifie seulement, en lecture pure,
-    que le manifest et le seal geles au commit F10 sont toujours presents et
-    inchanges par cette branche de demo.
+    Depuis la promotion vers v0.2, la racine (merkle_seal.json,
+    docs/FREEZE_MANIFEST.json) porte desormais le seal ACTIF v0.2 — elle ne
+    doit plus etre comparee au hash v0.1. La reference historique v0.1 est
+    verifiee separement, de facon independante de l'arbre courant, dans
+    docs/history/ (voir tests/unit/test_historical_seal_v0_1.py). Ce test
+    verifie seulement que l'archive figee v0.1 est toujours presente et
+    n'a pas ete alteree par cette branche.
     """
     root = pathlib.Path(__file__).resolve().parents[2]
-    manifest = (root / "docs" / "FREEZE_MANIFEST.json").read_text(encoding="utf-8")
-    seal = (root / "merkle_seal.json").read_text(encoding="utf-8")
-    assert '"root_hash": "5711dbfa0a0c4a83108eb68b66b03bb9af283240243766eb70eb67cfa06d2fd4"' in seal
-    assert "e6ae249c35c017dc78445f7020f8951b161f4316" in manifest
+    archived_manifest = (root / "docs" / "history" / "FREEZE_MANIFEST_V0.1.json").read_text(
+        encoding="utf-8"
+    )
+    archived_seal = (root / "docs" / "history" / "merkle_seal_v0.1.json").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        '"root_hash": "5711dbfa0a0c4a83108eb68b66b03bb9af283240243766eb70eb67cfa06d2fd4"'
+        in archived_seal
+    )
+    assert "e6ae249c35c017dc78445f7020f8951b161f4316" in archived_manifest
 
 
 # ── 12. Suite globale sans regression — verifie separement par le parent (pytest tests/ -q) ─

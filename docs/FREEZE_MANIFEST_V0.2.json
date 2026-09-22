@@ -1,17 +1,32 @@
 {
-  "architecture_status": "CLOSED",
-  "canonical_contract_version": "canonical.v1",
-  "external_path_status": "PASS",
-  "freeze_version": "v0.2",
+  "reference_version": "v0.2",
   "parent_reference": "v0.1",
   "parent_commit": "9e68391da6b5b6c631ae83b7c5383082e6f4837e",
-  "git_commit": "4236edafb1f9db98143c596d23564c60392a2ded",
+  "current_commit": "4236edafb1f9db98143c596d23564c60392a2ded",
+  "project": "OBSIDIA_TRADING",
+  "test_count": 188,
+  "skipped_count": 1,
+  "architecture_status": "CLOSED",
+  "canonical_convergence_status": "CLOSED",
+  "native_status": "PASS",
+  "external_status": "PASS",
+  "cockpit_status": "PASS",
+  "naive_vs_governed_status": "PASS",
+  "paper_execution_status": "ENFORCED",
+  "proof_replay_status": "PASS",
+  "historical_regression_status": "PASS",
+  "known_regressions": 0,
+  "canonical_contract_version": "canonical.v1",
+  "receipt_schema_version": "receipt.v1",
+  "proof_policy": "PROOF_BEST_EFFORT",
+  "kx108_status": "NO_REAL_KERNEL_CONNECTED",
+  "added_capability": "Naive vs Governed Demo (apps/naive_vs_governed/, apps/cockpit/naive_vs_governed_view.py) — promoted from branch demo/naive-vs-governed-v1 (commit 2d0bb8d), merge commit 4236eda, promotion audit = PROMOTE (12/12 criteria PASS, 0 forbidden-file modification, no new authority)",
   "known_boundaries": [
     "Le score structurel local (native/agents ou governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) est un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
     "Ce freeze ne prouve rien sur le comportement du Kernel X-108 de production (scelle, externe, jamais accede depuis ce repo).",
     "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia) — voir docs/SEAL_SCOPE.md pour le perimetre exact du merkle_seal.json dedie a ce repo.",
     "Aucun remote git n'est configure pour ce repo ; aucun push n'a ete effectue a aucune etape de F1 a v0.2.",
-    "v0.1 (commit 9e68391) reste une reference historique intacte et independamment verifiable, archivee sous docs/history/ et couverte par tests/unit/test_historical_seal_v0_1.py. Ce fichier (docs/FREEZE_MANIFEST.json) est desormais la version ACTIVE (v0.2) ; la copie figee v0.1 est docs/history/FREEZE_MANIFEST_V0.1.json."
+    "v0.1 (commit 9e68391) reste une reference historique intacte et independamment verifiable : voir docs/history/ et tests/unit/test_historical_seal_v0_1.py. Le seal actif a la racine (merkle_seal.json) couvre desormais v0.2, pas v0.1 — les deux ne doivent jamais etre confondus."
   ],
   "known_debts": [
     "Aucun vrai Kernel X-108 branche dans ce repo : FixtureKX108Client est TEST-ONLY (tests/test_support/), le comportement de production par defaut est UnavailableKX108Client, fail-closed (Authority.HOLD sur indisponibilite ou reponse invalide).",
@@ -21,17 +36,7 @@
     "Rendu visuel Streamlit du Cockpit (apps/cockpit/app.py) non teste automatiquement ; seule la couche donnees (apps/cockpit/presenter.py, scenarios.py, apps/naive_vs_governed/comparison.py) est couverte par pytest.",
     "Le store de receipts du Cockpit est temporaire par session (aucune persistance entre lancements) — coherent avec un usage demo/PAPER, pas un journal de production.",
     "Packs de tests formels du Kernel (MVP-obsidia-, ex: test_absolute_hold_gate, test_non_invertible_order) NOT_PORTABLE : ils testent des invariants du Kernel X-108 reel, externe et scelle, hors perimetre inspectable depuis ce repo.",
-    "Les verdicts TEST FIXTURE KX108 des scenarios B et C de la demo Naive vs Governed sont des configurations narratives fixees a l'avance (le fixture ne lit pas les unknowns/contradictions et ne derive aucun verdict a partir d'eux) — juxtaposition pedagogique, pas une causalite calculee par un Kernel reel.",
-    "Le test AST d'isolation du chemin Naive scanne les imports statiques uniquement ; il ne couvre theoriquement pas un import dynamique (importlib, __import__, eval, exec). NONE FOUND dans apps/naive_vs_governed/ au moment de ce freeze (verifie par grep) — angle mort documente, pas corrige par un systeme de detection supplementaire."
-  ],
-  "kx108_status": "NO_REAL_KERNEL_CONNECTED",
-  "native_path_status": "PASS",
-  "paper_only_status": "ENFORCED",
-  "project": "OBSIDIA_TRADING",
-  "proof_policy": "PROOF_BEST_EFFORT",
-  "receipt_schema_version": "receipt.v1",
-  "skipped_count": 1,
-  "test_count": 188,
-  "timestamp": "2026-09-22T12:00:00+00:00",
-  "added_capability": "Naive vs Governed Demo (apps/naive_vs_governed/, apps/cockpit/naive_vs_governed_view.py) promoted from demo/naive-vs-governed-v1 (2d0bb8d) via merge commit 4236eda"
+    "Les verdicts TEST FIXTURE KX108 des scenarios B et C de la demo Naive vs Governed sont des configurations narratives fixees a l'avance (le fixture ne lit pas les unknowns/contradictions et ne derive aucun verdict a partir d'eux) — juxtaposition pedagogique, pas une causalite calculee par un Kernel reel. Voir apps/naive_vs_governed/comparison.py et docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
+    "Le test AST d'isolation du chemin Naive (tests/unit/test_naive_vs_governed.py) scanne les imports statiques (ast.Import/ImportFrom) ; il ne couvre theoriquement pas un import dynamique (importlib, __import__, eval, exec). NONE FOUND dans apps/naive_vs_governed/ au moment de ce freeze (verifie par grep) — angle mort documente, pas corrige par un systeme de detection supplementaire (juge disproportionne pour ce risque)."
+  ]
 }

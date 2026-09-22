@@ -58,20 +58,27 @@ SCENARIOS = (
     ),
     NaiveVsGovernedScenario(
         "B_unknown", "B", "Unknown critique",
-        "Naive suit le signal brut. Governed conserve les unknowns surfaces par "
+        "Deux faits juxtaposes, sans lien causal calcule entre eux. "
+        "Fait 1 (Naive) : le signal brut est suivi tel quel, sans regarder les "
+        "unknowns. Fait 2 (Governed) : les unknowns surfaces par "
         "ProofConsistencyAgent (champs de marche absents du snapshot demo — gap "
-        "documente dans native/agents/adapter.py). Le fixture KX108 est place a HOLD "
-        "pour representer ce qu'un vrai Kernel ferait face a cette incertitude non "
-        "resolue — le fixture ne LIT PAS reellement les unknowns (TEST-ONLY, voir "
-        "docs/B15_STRUCTURAL_SCORE_BOUNDARY.md), c'est un choix narratif explicite.",
+        "documente dans native/agents/adapter.py) sont conserves et visibles. "
+        "Fait 3, independant des deux premiers : TEST FIXTURE KX108 = HOLD pour ce "
+        "scenario. Le fixture NE LIT PAS les unknowns et ne derive AUCUN verdict a "
+        "partir d'eux (TEST-ONLY, voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md) — "
+        "c'est une configuration narrative fixee a l'avance, pas une decision "
+        "causale d'un Kernel reel.",
         governed_scenario_key="native_hold",
     ),
     NaiveVsGovernedScenario(
         "C_contradiction", "C", "Contradiction agents",
-        "Naive ne retient que le signal dominant. Governed conserve les "
-        "contradictions/risk_flags de tous les agents (RegimeShiftAgent, "
-        "VolatilityAgent, PortfolioStressAgent). Fixture KX108 place a BLOCK pour la "
-        "meme raison narrative que le scenario B.",
+        "Deux faits juxtaposes, sans lien causal calcule entre eux. "
+        "Fait 1 (Naive) : seul le signal dominant est retenu. "
+        "Fait 2 (Governed) : les contradictions/risk_flags de tous les agents "
+        "(RegimeShiftAgent, VolatilityAgent, PortfolioStressAgent) sont conserves et "
+        "visibles. Fait 3, independant des deux premiers : TEST FIXTURE KX108 = "
+        "BLOCK pour ce scenario — meme configuration narrative fixee a l'avance que "
+        "le scenario B, aucune derivation causale reelle.",
         governed_scenario_key="native_block",
     ),
     NaiveVsGovernedScenario(
