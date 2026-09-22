@@ -1369,3 +1369,244 @@ Le périmètre du seal F10 (`docs/SEAL_SCOPE.md`) inclut `apps/**/*.py`. L'ajout
 
 ### Statut
 DONE, avec le point de seal-scope documenté ci-dessus comme dette explicite de cette branche démo (pas cachée).
+
+## F11 — PROOF_REQUIRED (branche `feature/f11-proof-required`, depuis v0.2.4 / `6864d38`)
+
+### Audit initial (avant tout patch)
+`execution/binder/engine.py::_prove()` (avant F11) appelait `self.proof.record(receipt)` dans un `try/except Exception` qui se contentait de logger une note (`echec d'ecriture de la preuve`) sans jamais relever l'exception ni marquer le `CycleOutcome`. Deux consequences non documentees jusqu'ici :
+1. Le `CycleOutcome` retourne a l'appelant ne portait **aucune indication** que la persistance avait echoue -- `outcome.error` reste `None`, un cycle apparemment normal.
+2. `_last_receipt_hash` avancait quand meme sur le hash du receipt **jamais persiste**, ce qui aurait casse la chaine reellement stockee au prochain cycle reussi (son `previous_receipt_hash` aurait pointe vers un hash absent du store).
+
+`execution/binder/engine.py::_execute()` (F3/F6) avait deja un mecanisme de preuve pre-execution, mais via `order_ledger` (pas `proof`/`CycleReceipt`) : `order_ledger.append(SUBMISSION_INTENT_RECORDED)` avant tout `broker.submit()` -- si cette ecriture echoue, l'execution est refusee avant tout appel broker. Ce mecanisme existant satisfait deja partiellement l'invariant "pas d'action sans preuve pre-execution", mais uniquement cote ledger, pas cote port de preuve (`ProofPort`).
+
+### Risque identifie
+`broker side effect succeeds` + `proof persistence fails` : un ordre PAPER peut etre reellement accepte par le broker alors que le `CycleReceipt` final echoue a se persister durablement. Aucune transaction atomique n'existe (ni ne peut exister honnetement) entre le store de preuve local et l'API broker externe.
+
+### Architecture retenue
+Changement minimal, pas de reecriture :
+- `execution/binder/proof_policy.py` (nouveau) : `ProofPolicy` (`BEST_EFFORT` par defaut, `REQUIRED`) et `ProofOutcome` (`NOT_APPLICABLE`, `PROVEN`, `PRE_EXECUTION_PROOF_FAILURE`, `ABSTENTION_PROOF_INCOMPLETE`, `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE`).
+- `CycleEngine.__init__` accepte `proof_policy` (defaut `BEST_EFFORT`, retro-compatible avec tous les appelants existants).
+- `_execute()` : sous `ProofPolicy.REQUIRED` uniquement, une lecture legere (`self.proof.last_hash()`, jamais une ecriture) sonde la joignabilite du port de preuve **avant** tout appel broker. Si elle echoue, l'execution est refusee, aucun ordre ne part (`ExecutionResult.not_submitted`). C'est la seule difference comportementale de `REQUIRED` -- le reste (rapport honnete post-execution) est identique dans les deux politiques, car mentir sur l'issue n'est jamais acceptable quelle que soit la politique.
+- `_prove()` : `self.proof.record(receipt)` est toujours tente ; en cas d'echec, `_last_receipt_hash` **n'avance plus** (corrige le bug de derive de chaine decrit ci-dessus, independamment de la politique), et `CycleOutcome.proof_outcome` porte `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE` si `execution.touched_the_market` etait vrai, sinon `ABSTENTION_PROOF_INCOMPLETE`. Jamais "rien ne s'est passe", jamais "echec d'execution" quand le broker a pu accepter l'ordre.
+- `CycleOutcome` gagne un champ `proof_outcome` (valeur par defaut `NOT_APPLICABLE`, retro-compatible).
+- `paper_execution.py::build_paper_cycle_engine` expose `proof_policy` (defaut `BEST_EFFORT`, inchange pour tous les appelants existants -- Cockpit, demo Naive vs Governed, F8.5/F8.6).
+- Pourquoi pas un receipt "pre-execution attempt" separe via le `ProofPort` (option evoquee dans la demande) : le mecanisme `order_ledger` remplit deja ce role pour la durabilite de l'intention, et creer un second systeme de preuve pre-execution via `CycleReceipt` aurait duplique une garantie deja tenue ailleurs -- contraire a la consigne "pas de second systeme parallele".
+
+### Fichiers modifies
+- `execution/binder/proof_policy.py` (nouveau)
+- `execution/binder/engine.py` (constructeur, `_execute`, `_prove`, `CycleOutcome`, docstring)
+- `execution/binder/paper_execution.py` (parametre `proof_policy` expose, retro-compatible)
+- `tests/integration/test_proof_required.py` (nouveau, 10 tests)
+
+### Nouveaux invariants
+1. Un receipt jamais persiste ne fait jamais avancer la chaine en memoire.
+2. `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE` != succes, != echec : incertitude reelle preservee, jamais resolue silencieusement.
+3. Sous `ProofPolicy.REQUIRED`, un port de preuve injoignable bloque l'execution **avant** tout appel broker.
+4. `proof != authority` : aucun de ces changements ne touche `KX108GovernanceBridge`, l'autorite du Binder, ou le contrat canonique.
+
+### Tests ajoutes (10, mapping avec les 13 cas demandes)
+1-2 (HOLD/BLOCK, `proof` reel) . 3 (ACT+Binder refuse) . 4 (proof injoignable avant execution, bloque sous REQUIRED, pas sous BEST_EFFORT -- 2 tests) . 5 (succes complet prouve) . 6 (echec broker durablement prouve) . 7 (succes broker + echec preuve finale = `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE`, + variante HOLD = `ABSTENTION_PROOF_INCOMPLETE`) . chaine (receipt fantome n'avance jamais le pointeur, `ReceiptChainVerifier` confirme `VALID`). Cas 8-13 (idempotence, replay, hash-chain/alteration, Native/External, PAPER only) : couverts par les tests F6/F7/F8.5/F8.6 existants, inchanges par F11 (`BEST_EFFORT` par defaut y preserve le comportement exact d'avant F11) -- non dupliques.
+
+### Resultat pytest
+`pytest tests/ -q` -> **197 passed, 1 skipped, 1 failed**. Le seul echec est le test de coherence de perimetre du seal (`test_freeze_manifest.py`, attendu et documente : deux nouveaux fichiers de production sous `execution/binder/` font passer le compte scelle de 87 a 88 -- le seal v0.2.4 n'a pas ete touche, conformement a la consigne "ne repare pas le seal au milieu du chantier").
+
+### Regressions
+**0 / 188** (baseline exacte preservee). +10 nouveaux tests, le seul delta de comptage est le flip attendu du test de seal.
+
+### Dette restante (volontairement non resolue par F11)
+- Pas de vraie transaction distribuee entre le proof store et l'API broker (assume comme limite reelle, pas une dette a combler par un mensonge architectural).
+- `ProofPolicy.REQUIRED` n'est pas le defaut de `build_paper_cycle_engine` -- un appelant doit l'activer explicitement pour le chemin gouverne critique.
+- Aucun mecanisme de reprise automatique (retry/replay) pour re-tenter la persistance d'un receipt en `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE` -- l'etat est honnetement expose, pas resolu.
+- Vrai Kernel X-108 toujours non branche (inchange, hors perimetre F11).
+
+### Verdict
+**F11_PROOF_REQUIRED_CLOSED**
+
+## F12 — Real KX108 Integration (branche feature/f11-proof-required)
+
+Audit read-only initial : `domains/trading/trading_x108_gate.py` (core) delegue T/H/A/S a un Kernel externe via `OBSIDIA_KERNEL_URL` (defaut `http://127.0.0.1:3001/kernel/ragnarok`). Ce Kernel EXISTE et est EXECUTABLE : `server.kernel.sealed.cjs` (racine du core), serveur Express qui spawn `python sigma/run_pipeline.py <domain> <data>`. Demarre en lecture seule (jamais modifie), un round-trip reel a ete effectue et documente integralement dans `docs/F12_REAL_KERNEL_ROUND_TRIP.md` (digests SHA-256 verifiables).
+
+**Decouverte critique** : la reponse reelle du Kernel porte la cle `x108_gate` (ACT/ALLOW/HOLD/BLOCK), PAS `verdict` comme le gate actuel du core le suppose (`kernel_decision.get("verdict","HOLD")`) — ecart de contrat preexistant cote core, non corrige ici (hors scope, Kernel jamais patche).
+
+**Ajout** : `RealKX108Client` dans `governance/bridge/kx108_client.py` (fichier existant, meme style que `UnavailableKX108Client`/`StaticKX108Client`) — transport HTTP reel, normalise `x108_gate`→`verdict` UNIQUEMENT si la valeur est dans l'ensemble attendu, sans jamais inventer une valeur absente. `FixtureKX108Client` reste TEST-ONLY, `UnavailableKX108Client` reste le fail-closed par defaut. Aucune logique decisionnelle (T/H/A/S, structural_score, theta_S) dans ce client — verifie par test structurel (scan du source).
+
+**Tests** : `tests/unit/test_real_kx108_client.py` (16, mocks HTTP : contract/parsing/fail-closed/boundary) + `tests/integration/test_real_kernel_native_external.py` (3, round-trip REEL automatise : demarre le processus Kernel scelle du core en subprocess lecture-seule, fait tourner un cycle Native ET External complet — CycleEngine/GovernanceBridge/RealKX108Client/Binder/FakeBroker PAPER — via ce Kernel reellement joignable ; skip proprement si node/port indisponibles).
+
+**Frontiere Kernel confirmee apres round-trip automatise** : `git status --short` sur le core montre uniquement le diff `merkle_seal.json` preexistant (non lie a ce travail, present depuis le tout debut de la session) ; aucun nouveau commit ; aucun tag deplace. `KERNEL FILES MODIFIED = 0`, `KERNEL COMMITS CREATED = 0`, `KERNEL TAGS MOVED = 0`.
+
+**PAPER ONLY** : `require_paper_mode` inchange, aucun bypass — meme avec Kernel reel repondant ACT, le Binder reste une barriere independante obligatoire (FakeBroker dans les tests, jamais de reseau broker reel).
+
+**Tests** : `pytest tests/ -q` -> 216 passed, 1 skipped, 1 failed (flip de scope du seal v0.2.4 attendu et volontaire — meme fichier `kx108_client.py` deja dans le perimetre scelle, contenu enrichi -> seal non regenere sur cette branche, conforme a la consigne F12/F11 "ne repare pas le seal en plein chantier"). Zero regression fonctionnelle sur les 197 precedents.
+
+**Dette restante** : contrat reel Kernel (`x108_gate`) non aligne avec le gate du core (`verdict`) — corrige uniquement cote client Trading, pas cote core (hors mandat). Pas de calibration/tuning (F13). Pas de nouveau freeze/tag/merge (attendu, decision separee).
+
+### Verdict
+**F12_REAL_KX108_INTEGRATION_CLOSED** — le vrai Kernel a ete identifie, demarre en lecture seule, joint par un round-trip reel documente ET automatise en test (Native et External), avec preuve concrete que le core n'a subi aucune modification.
+
+## F12.1 — Reference Runtime Closure (branche feature/f11-proof-required)
+
+**Audit initial** : `execution/binder/paper_execution.py::build_paper_cycle_engine` accepte `kx108_client` sans contrainte et defaut `proof_policy: ProofPolicy = ProofPolicy.BEST_EFFORT`. `execution/binder/engine.py::CycleEngine.__init__` a le meme defaut. Rien n'empechait `RealKX108Client` (F12) d'etre injecte sans jamais passer par `ProofPolicy.REQUIRED` (F11) — constate concretement dans `tests/integration/test_real_kernel_native_external.py::_run_cycle`, qui construisait `CycleEngine(...)` avec `RealKX108Client()` sans jamais specifier `proof_policy`, retombant silencieusement sur `BEST_EFFORT`.
+
+**Risque** : `RealKX108Client + ProofPolicy.BEST_EFFORT` pouvait devenir le runtime de reference par accident — un ACT reel du vrai Kernel, execute cote broker, sans que l'echec eventuel de la preuve pre-execution ne bloque quoi que ce soit (l'invariant REQUIRED n'aurait jamais ete verifie).
+
+**Correction (changement minimal, pas de nouveau builder)** : garde-fou `_reject_implicit_best_effort_with_real_kernel(authority, proof_policy)` ajoute dans `CycleEngine.__init__`, appele pour TOUTE construction de `CycleEngine` (donc aussi via `build_paper_cycle_engine`, qui l'appelle en interne). Import local (jamais au niveau module) de `KX108GovernanceBridge`/`RealKX108Client` pour preserver le decouplage existant entre `execution/binder/` et `governance/bridge/`. Si `proof_policy is BEST_EFFORT` ET que l'autorite injectee est un `KX108GovernanceBridge` enveloppant un `RealKX108Client` (introspection via la nouvelle propriete publique `KX108GovernanceBridge.client`), leve `RealKernelRequiresProofRequired` — construction refusee. `ProofPolicy.BEST_EFFORT` reste le defaut historique inchange pour tout le reste (Fixture/Unavailable/Static + Cockpit/demo/tests F6-F11), verifie par test parametrise.
+
+**Fichiers modifies** : `execution/binder/engine.py` (nouvelle exception `RealKernelRequiresProofRequired` + garde-fou), `governance/bridge/governance_bridge.py` (propriete `client` en lecture seule), `tests/integration/test_real_kernel_native_external.py` (`_run_cycle` passe desormais `proof_policy=ProofPolicy.REQUIRED` explicitement). Nouveau : `tests/unit/test_reference_runtime_proof_policy.py` (8 tests).
+
+**Runtime cible confirme** : `REAL_KX108=YES`, `PROOF_REQUIRED=YES` (impose par construction), `PAPER_ONLY=YES` (inchange), `BINDER_BYPASS=NO`.
+
+**Native** : PASS (`test_native_path_real_kernel_round_trip`, re-execute avec le vrai Kernel, desormais sous `ProofPolicy.REQUIRED`).
+**External** : PASS (`test_external_path_real_kernel_round_trip`, idem).
+
+**Tests** : `pytest tests/ -q` -> 224 passed, 1 skipped, 1 failed (meme flip de scope seal attendu depuis F12, aucun nouveau fichier ajoute au perimetre scelle). Zero regression fonctionnelle sur les 216 precedents (+8 nouveaux tests F12.1).
+
+**Kernel boundary** : `git status --short` sur le core -> uniquement le diff `merkle_seal.json` preexistant, `git log -1` inchange (`c306fa33`). `KERNEL FILES MODIFIED = 0`.
+
+### Verdict
+**F12_1_REFERENCE_RUNTIME_CLOSED** — la combinaison dangereuse (vrai Kernel + preuve best-effort silencieuse) est desormais structurellement impossible a construire, verifiee par 8 tests dedies, sans casser aucun usage BEST_EFFORT existant ni toucher au Kernel.
+
+## F13 — Real Trading Domain Calibration (feature/f13-real-trading-calibration)
+
+**Constat central, verifie et non suppose** : cet environnement n'a jamais eu de credentials Alpaca reels configures (`ALPACA_API_KEY`/`ALPACA_SECRET_KEY` vides partout, `.env.example` uniquement). Un appel direct sans cle a `https://data.alpaca.markets/v2/stocks/AAPL/bars` retourne `401 Unauthorized` (teste explicitement, pas suppose). **Aucune donnee de marche reelle n'est accessible depuis cette machine.**
+
+**Consequence assumee, pas contournee** : F13 ne peut donc PAS produire de calibration reposant sur des observations reelles. Construire une calibration avec des donnees synthetiques presentees comme reelles serait exactement l'inverse de l'objectif F13 (interdiction explicite). L'infrastructure est construite, testee, prete a recevoir de vraies donnees des qu'elles seront accessibles — mais aucune fermeture ne peut etre declaree.
+
+**Audit des modeles existants (A)** :
+- 17 agents (`native/agents/domains/trading_agents.py`) : tous les seuils sont **FIXED/HEURISTIC**, codes en dur (ex. `change > 0.001`, `spread < 12`, `rv20 > rv60*1.3`, `risk > 0.7`) — aucun mecanisme de fitting existant, confirme par `grep "def fit|def calibrat"` -> 0 resultat.
+- `simulation/trading_world/market_process.py` : GARCH(1,1) — `garch_alpha/beta/omega` sont des champs de `MarketProcessParams` **jamais fittes**, toujours passes en dur par l'appelant -> **UNCALIBRATED**.
+- `build_regime_matrix` (Markov) — deja connu depuis F4 comme non calibre (auto-transition artificielle) -> **UNCALIBRATED**, confirme, non masque.
+- Aucune fonction de fitting/calibration n'existait nulle part avant F13.
+
+**Infrastructure creee (C)** :
+- `domain/calibration.py` : `CalibrationPack`, `DatasetDescriptor`, `ModelCalibration` — versionnage complet (calibration_id/schema_version/dataset_digest/parameters_digest/created_at/method), determinisme prouve par test, `status` honnete (`NOT_CALIBRATED_NO_REAL_DATA` si `dataset.is_real` est faux).
+- `market/adapters/alpaca/real_dataset_attempt.py` : tentative honnete d'obtention de barres Alpaca reelles — retourne toujours un `DatasetDescriptor` avec `observation_count=0` et `quality_flags` explicite (`NO_CREDENTIALS_CONFIGURED` dans cet environnement), jamais une exception qui masquerait le resultat, jamais une valeur inventee.
+- `tests/unit/test_calibration_pack.py` (13 tests) : determinisme, digests, provenance, statut honnete d'absence de donnees, Markov/GARCH marques UNCALIBRATED sans les cacher, aucun couplage External->calibration Native, canonical builder intact, **aucun import governance/execution.binder dans le code de calibration** (verifie par AST, pas texte).
+- Roster natif (F3) et `external/` (F8) **non modifies** — verifie par test (`"calibration" not in src.lower()`).
+- Real Kernel round-trip (F12) relance et toujours PASS (3/3, 11.56s) — le Kernel n'a pas ete affecte par F13.
+
+**Modeles (D)** : GBM = input synthetique uniquement (pas de fitting possible sans donnees reelles) ; Markov = **UNCALIBRATED** (confirme, documente) ; GARCH(1,1) = **UNCALIBRATED** (parametres fixes, jamais fittes) ; Merton jumps = parametres fixes ; bootstrap (`simulation/monte_carlo/bootstrap.py`) = concu pour accepter une serie reelle mais aucune serie reelle disponible pour l'alimenter dans cet environnement ; VaR/ES/Sharpe/MaxDrawdown = calculs corrects (F4) mais appliques a des trajectoires non calibrees.
+
+**Kernel boundary (J)** : `git status --short` sur le core -> uniquement le diff `merkle_seal.json` preexistant (identique depuis le debut de session), `git log -1` inchange (`c306fa33`). `KERNEL FILES MODIFIED = 0`.
+
+**Tests** : `pytest tests/ -q` -> 237 passed, 1 skipped, 1 failed (flip de scope seal attendu — 2 nouveaux fichiers de production dans le perimetre scelle, `domain/calibration.py` + `market/adapters/alpaca/real_dataset_attempt.py`), **0 regression fonctionnelle** sur les 224 precedents.
+
+**Dette restante (K)**, aucune cachee :
+1. Zero donnee de marche reelle utilisee — c'est le blocage central, pas une omission.
+2. Aucun modele (GBM/Markov/GARCH/jumps) n'est reellement calibre.
+3. Pas de matrice d'evaluation multi-periodes (necessite des donnees reelles).
+4. Pas de separation train/validation (necessite des donnees reelles).
+5. Les 17 agents ne consomment pas encore de `CalibrationPack` (aucune raison de le faire cablé sans vraies donnees pour l'alimenter).
+6. Certains agents (ex. `LiquidityAgent`) retombent silencieusement sur une valeur par defaut (`spreads_bps[-1] if ... else 0.0`) plutot que de produire un `unknown` explicite quand la donnee manque — gap identifie, non corrige ici (modifier les 17 agents est hors scope F13 sauf necessite demontree, et ce n'est pas un defaut introduit par F13).
+
+### Verdict (etat initial, avant credentials)
+**F13_REAL_TRADING_CALIBRATION_NOT_CLOSED** — l'infrastructure de calibration est construite, deterministe, testee et honnete sur son propre etat, mais aucune calibration reelle n'a pu etre effectuee faute d'acces a des donnees de marche reelles dans cet environnement (verifie par un appel HTTP direct, pas suppose). Reprendre F13 des que des credentials Alpaca reels seront disponibles : `attempt_real_historical_dataset` et `CalibrationPack` sont concus pour recevoir ces donnees sans modification.
+
+---
+
+## F13 (suite) — Calibration reelle obtenue apres fourniture de credentials Alpaca paper
+
+**Changement de contexte** : l'utilisateur a fourni de vraies cles API Alpaca **paper trading**, placees dans `C:\Users\User\Desktop\OBSIDIA_TRADING\.env` (fichier local, git-ignore, jamais suivi, jamais affiche/logge/commite a aucun moment — verifie par `git status --short` a chaque etape). Un appel direct a `https://data.alpaca.markets/v2/stocks/AAPL/bars` avec ces credentials retourne HTTP 200.
+
+**Bug decouvert et corrige (marche/adapters/alpaca/real_dataset_attempt.py)** : sans parametre `start` explicite, l'endpoint Alpaca ne retourne que la derniere barre disponible (`observation_count=1` avec `limit=200`), quel que soit `limit`. Correction : ajout d'une fenetre `start`/`end` explicite (`_default_window`, `lookback_days=200` par defaut) + `feed=iex` (feed gratuit, evite une restriction SIP). Avec cette correction : **171 barres reelles AAPL** recuperees (2026-01-14 -> 2026-09-18).
+
+**Nouveau module** `domain/calibration_estimation.py` (fonctions pures, aucun import governance/execution.binder, verifie par AST) :
+- `estimate_realized_volatility` : ecart-type empirique annualise (seuil minimal 10 observations).
+- `estimate_garch_1_1` : recherche en grille sur (alpha, beta) sous contrainte de stationnarite (alpha+beta<1), omega par variance targeting, minimisation de la NLL gaussienne (seuil minimal 30 observations). Methode simple et documentee (pas une MLE complete), mais un vrai ajustement sur donnees, pas des coefficients devines.
+- `estimate_markov_regime_matrix` : classification des rendements par quantiles empiriques de |rendement| (proxy de volatilite locale), comptage reel des transitions, lissage de Laplace (+1/cellule) pour eviter les lignes a zero observation (seuil minimal 30 observations). Documente explicitement comme un decoupage empirique par magnitude, PAS une detection de "regime de marche vrai".
+
+**Extension `market/adapters/alpaca/real_dataset_attempt.py`** : nouvelle fonction `attempt_real_historical_dataset_with_closes` (a cote de la fonction existante, non modifiee dans son comportement de base si `lookback_days` par defaut est utilise) qui renvoie en plus la liste des prix de cloture reels, necessaire pour calculer les rendements.
+
+**Resultat de calibration reel obtenu** (AAPL, fenetre train = 70% des 170 rendements = 118 observations, fenetre eval = 52 observations restantes, **disjointes**) :
+- `realized_volatility` : **CALIBRATED**, vol annualisee ~27.2% (methode : ecart-type empirique, echantillon=118) — plausible pour AAPL, pas verifiee contre une source tierce mais coherente avec l'ordre de grandeur connu du marche actions.
+- `garch_1_1` : **CALIBRATED**, omega=3.82e-05, alpha=0.02, beta=0.85 (grille alpha/beta, NLL minimisee = -420.67 in-sample). Evaluation hors-echantillon (fenetre eval, memes parametres) : NLL = -182.95 sur 52 observations. Ramene par observation : -3.57 (train) vs -3.52 (eval) — **coherence raisonnable**, pas de divergence numerique grossiere entre fit et validation.
+- `markov_regime_matrix` : **CALIBRATED**, 2 regimes, seuil de classification = 0.00945 (quantile empirique de |rendement|), matrice de transition reelle `[[0.508, 0.492], [0.500, 0.500]]`, 60/58 observations par regime — echantillon suffisant pour cette classification simple, sans pretention a une decouverte de regime economique.
+
+**CalibrationPack final** : `calibration_id=calib-943ad329db95c460`, `status=CALIBRATED` (les 3 modeles sont CALIBRATED, aucun UNCALIBRATED parmi eux), `dataset_digest` et `parameters_digest` recalcules et stables (deterministes, verifies par test).
+
+**Train/validation (H)** : separation stricte 70/30 sur l'ordre chronologique (pas de melange aleatoire qui romprait la causalite temporelle), documentee explicitement dans chaque `ModelCalibration.calibration_window`.
+
+**Real Kernel observations (G)** : un cas construit a partir de la volatilite REELLEMENT estimee (`H_score`/`A_score` derives de `annualized_vol` via un mappage simple et documente, pas une formule officielle du domaine) envoye au vrai Kernel (`RealKX108Client`, meme process que F12) — reponse recue et structurellement validee (`verdict` ou `x108_gate` present). Rapport strict "input contenait telle volatilite reelle -> Kernel a repondu tel verdict", **aucune causalite affirmee au-dela de ce que le test verifie**. Aucun parametre de calibration n'a ete ajuste en fonction de cette reponse (verifie par test AST : aucun import governance/execution.binder dans le code d'estimation/calibration).
+
+**Nouveaux tests** :
+- `tests/unit/test_calibration_estimation.py` (11 tests, aucun reseau) : determinisme, seuils d'insuffisance, contrainte de stationnarite GARCH, lignes de matrice Markov sommant a 1, aucun import interdit.
+- `tests/integration/test_real_market_calibration.py` (13 tests, credentials requises via fixture `real_alpaca_env` qui charge `.env` avec `monkeypatch` — **skip proprement si absentes**, jamais un echec) : digest deterministe, symboles differents -> digests differents, provenance conservee, donnees insuffisantes -> statut honnete, staleness, Markov/GARCH calibres depuis donnees reelles, dataset genuinement reel (pas un placeholder deguise), separation train/eval, roster natif non affecte, **round-trip Kernel reel avec cas derive de la calibration**, Kernel non modifie, aucune boucle de retroaction verdict->parametre.
+- **Verifie explicitement** : `test_calibration_pack.py::test_real_dataset_attempt_is_honest_about_missing_credentials` continue de passer quel que soit l'ordre d'execution (le chargement de `.env` est scope par `monkeypatch` dans le nouveau fichier, jamais une mutation globale de `os.environ`).
+
+**Suite complete** : `pytest tests/ -q` -> **261 passed, 1 skipped, 1 failed** (flip de scope seal attendu — 91 fichiers vs 87, `domain/calibration_estimation.py` + les 2 nouveaux fichiers de test dans le perimetre `apps/**`/`domain/**` couvert par `SEAL_SCOPE.md`), **0 regression fonctionnelle** sur les 237 precedents (24 nouveaux tests : 11 + 13).
+
+**Kernel boundary** : `git status --short` sur le core -> uniquement le diff `merkle_seal.json` preexistant, `git log -1` inchange (`c306fa33`). **KERNEL FILES MODIFIED = 0**.
+
+**Dette restante, aucune cachee** :
+1. Un seul symbole calibre (AAPL) — pas de matrice multi-symboles/multi-classes d'actifs.
+2. Les 17 agents ne consomment toujours pas le `CalibrationPack` (gap deja identifie avant credentials, toujours hors scope — brancher un mecanisme commun necessiterait une decision de conception separee, pas une extension mecanique).
+3. GARCH calibre par recherche en grille simple, pas une MLE continue complete — documente comme tel, pas une limitation cachee.
+4. Une seule fenetre temporelle testee (mars-septembre 2026) — pas de matrice "normal / haute volatilite / faible liquidite / trend / range" (necessiterait plusieurs fenetres historiques distinctes et plus de credits API pour les recuperer, non tente ici pour rester dans un scope raisonnable).
+5. Le mappage volatilite-reelle -> payload IR Kernel (`H_score`/`A_score`) est un choix simple et documente, pas une formule officielle du domaine metier.
+6. Gap deja identifie (LiquidityAgent et defauts silencieux) toujours non corrige, hors scope F13.
+
+### Verdict final
+**F13_REAL_TRADING_CALIBRATION_CLOSED** — une calibration reelle, deterministe et reproductible (memes donnees + meme methode -> memes digests, verifie par test) a ete produite a partir de 171 observations de marche reelles (Alpaca paper, AAPL, 2026-01-14 -> 2026-09-18), avec separation train/eval stricte, statuts honnetes par modele, et une observation Kernel reelle derivee de cette calibration sans boucle de retroaction. Le perimetre reste volontairement etroit (1 symbole, 1 fenetre) — documente comme dette, pas dissimule.
+
+## F13.1 — Calibration Consumption Closure
+
+### A. Audit des 17 agents (native/agents/domains/trading_agents.py)
+| Agent | Seuils actuels (fichier:ligne) | Champ calibration pertinent ? | Statut |
+|---|---|---|---|
+| MarketDataAgent (L16-21) | `change>0.001` fixe | aucun (seuil de tick, pas une statistique de vol) | NO_RELEVANT_REAL_DATA |
+| LiquidityAgent (L24-31) | `spread<12`/`>25` bps fixes | pack ne porte pas spread/volume | NO_RELEVANT_REAL_DATA |
+| **VolatilityAgent** (L34-41) | `rv20 vs rv60*1.3/0.85` | `realized_volatility`, `garch_1_1` | **CALIBRATED** (fallback + evidence) |
+| MacroAgent (L44-49) | event_risk_scores | aucune donnee macro reelle | NO_RELEVANT_REAL_DATA |
+| CorrelationAgent (L52-59) | asset_ret vs ref_ret | pack mono-symbole (AAPL seul), pas de serie de reference calibree | NO_RELEVANT_REAL_DATA |
+| EventAgent (L62-67) | event_risk_scores | aucune source evenement reelle | NO_RELEVANT_REAL_DATA |
+| MomentumAgent (L70-76) | rsi 25/75 fixes | technique, pas issu du CalibrationPack | NO_RELEVANT_REAL_DATA |
+| MeanReversionAgent (L79-88) | zscore20 | pack ne calibre pas la distribution de prix (seulement les rendements) | NO_RELEVANT_REAL_DATA |
+| BreakoutAgent (L91-101) | support/resistance | aucun champ pack correspondant | NO_RELEVANT_REAL_DATA |
+| PatternAgent (L104-113) | comptage up/down | aucun champ pack correspondant | NO_RELEVANT_REAL_DATA |
+| SentimentAgent (L116-121) | sentiment_scores | aucune source sentiment reelle | NO_RELEVANT_REAL_DATA |
+| PredictionAgent (L124-132) | composite ad hoc (rv20 brut + risk + spread) | pas branche (formule composite non liee 1:1 a un modele calibre) | NO_RELEVANT_REAL_DATA |
+| PortfolioAgent (L135-139) | drawdown/exposure fixes | etat portefeuille, pas prix | N/A |
+| ExecutionQualityAgent (L142-147) | cost_score fixe | aucune donnee cout d'execution calibree | NO_RELEVANT_REAL_DATA |
+| **RegimeShiftAgent** (L150-158) | `rv5 vs rv20*1.6` | `markov_regime_matrix` | **CALIBRATED** (evidence seule, verdict inchange) |
+| PortfolioStressAgent (L161-166) | exposure/drawdown/imbalance | etat portefeuille, pas prix | N/A |
+| ProofConsistencyAgent (L169-178) | verification structurelle | non applicable (verification de payload, pas un modele de marche) | N/A |
+
+### B. Agents reellement branches
+`CalibrationAwareVolatilityAgent` et `CalibrationAwareRegimeShiftAgent` (`native/agents/calibrated_agents.py`) — wrappers legers, la classe de base n'est jamais modifiee/reecrite. Le travail avait deja ete commence (avant une interruption de session) sous forme de deux fichiers non commites cohérents avec cette mission (`domain/calibration_consumption.py`, `native/agents/calibrated_agents.py`) — repris et completes plutot que reecrits (jugement confirme apres relecture complete : logique saine, aucun import governance/execution.binder, fallback honnete). Ajout fait ici : `garch_calibration_note()` (absent de la version initiale — le GARCH calibre en F13 n'etait jamais reellement attache a un `CalibrationPack` construit, seul `realized_volatility` l'etait) et `build_full_real_calibration_pack()` qui assemble desormais les 3 modeles (`realized_volatility`, `garch_1_1`, `markov_regime_matrix`) dans un pack unique.
+
+Volatility : si l'historique de prix est trop court pour un `rv60` fiable (<61 points, cote agent d'origine), ET qu'un `CalibrationPack` compatible existe, la volatilite journaliere calibree (desannualisee via `/sqrt(252)`) remplace le fallback arbitraire — le seuil de decision (1.3x/0.85x) reste celui de l'agent d'origine, jamais modifie. Evidence GARCH attachee independamment, jamais decisionnelle. RegimeShift : le verdict n'est jamais recalcule a partir de la matrice Markov (integrer une matrice de regimes dans la logique de decision serait une reecriture d'agent, hors scope) — seule une note d'evidence sur l'etat de calibration est attachee, tracable jusqu'au receipt.
+
+### C. Agents volontairement non branches
+Les 15 autres — voir tableau A. Raison commune : le `CalibrationPack` F13 ne porte que sur les rendements de prix d'un seul symbole (AAPL) ; aucune donnee reelle calibree n'existe pour spread/volume/macro/event/sentiment/portfolio/execution-cost/cross-asset. Brancher ces agents forcerait une calibration fictive — explicitement interdit.
+
+### D. Symbol/timeframe compatibility
+`check_compatibility()` (`domain/calibration_consumption.py`) refuse explicitement (`SYMBOL_MISMATCH`) tout usage d'un pack calibre sur un symbole different — jamais une application silencieuse. Verifie par test reel (`test_symbol_mismatch_is_refused`, `test_calibrated_volatility_agent_symbol_mismatch_is_unknown_not_silent`).
+
+### E. Staleness
+`check_compatibility(..., max_age_days=...)` compare `pack.created_at` a l'horodatage courant ; au-dela du seuil fourni par l'appelant (aucune duree universelle inventee ici), retourne `STALE`. Verifie par test (`test_stale_pack_is_refused`).
+
+### F. Provenance
+`evidence_refs_for_pack()` attache `calibration_id`/`dataset_digest`/`calibration_schema_version` (jamais le pack entier) a `AgentOutput.evidence_refs`, qui suit deja jusqu'au receipt via le mecanisme etabli en F3.5/F7.
+
+### G. Native path
+Round-trip reel confirme : donnees Alpaca reelles (AAPL) -> `build_full_real_calibration_pack` -> `build_calibrated_trading_agents` -> `NativeRosterAnalysisAdapter` (modifie pour accepter des instances pre-construites en plus des classes, retrocompatible) -> convergence canonique -> vrai Kernel (`server.kernel.sealed.cjs`) -> `Binder` -> `PAPER` -> `PROOF_REQUIRED`. PASS (`test_native_calibrated_roster_real_kernel_round_trip`).
+
+### H. External path
+Confirme independant : `ExternalStackAnalysisAdapter`/`ExampleBrotherStackAdapter` fonctionne avec de vraies donnees Alpaca sans jamais referencer le `CalibrationPack` Native (`test_external_path_independent_of_native_calibration_pack`).
+
+### I. Real Kernel observations
+Round-trips reels effectues avec le roster calibre (PASS) et avec le chemin External (PASS) — memes principes anti-causalite-inventee et anti-tuning que F13 (verifie par test AST reprenant le meme motif : aucun import `governance`/`execution.binder` dans les modules de calibration).
+
+### J. Tests
+`pytest tests/ -q` -> **283 passed, 1 skipped, 1 failed** (le failed est le flip de scope seal historique, attendu : 93 fichiers vs 87 scelles a `v0.2.4`, +2 issus de ce chantier — non reparee, comme demande). **0 regression fonctionnelle** sur les 261 precedents (22 nouveaux tests : 15 unitaires sans reseau + 7 d'integration avec Alpaca/Kernel reels).
+
+### K. Kernel boundary
+`KERNEL FILES MODIFIED = 0` — confirme (`git status --short` sur le core : seul le diff preexistant `merkle_seal.json`, commit `c306fa33` inchange).
+
+### L. Dettes restantes
+1. 15 agents sur 17 restent `NO_RELEVANT_REAL_DATA`/`N/A` — legitime tant qu'aucune donnee reelle correspondante n'existe (spread/volume/macro/event/sentiment/execution-cost/cross-asset).
+2. Un seul symbole (AAPL) — la compatibilite multi-symboles reste a construire si un second symbole est calibre.
+3. GARCH n'influence toujours aucun verdict (evidence uniquement) — brancher une vraie prevision de volatilite conditionnelle dans une decision serait une extension future, pas tentee ici (hors scope : "ne pas reecrire les 17 agents").
+4. Gaps deja identifies en F13 (LiquidityAgent seuils fixes, defauts silencieux) non corriges, toujours hors scope.
+
+### M. Verdict final
+**F13_1_CALIBRATION_CONSUMPTION_CLOSED** — les 2 agents pour lesquels une donnee reelle calibree est pertinente (Volatility, RegimeShift) la consomment reellement et de facon tracable ; les 15 autres refusent honnetement (statut explicite en table A), aucun n'a ete force. Verifie par un vrai round-trip Native ET External contre le Kernel reel, avec `PROOF_REQUIRED` actif et sans aucune boucle de retroaction verdict->calibration.

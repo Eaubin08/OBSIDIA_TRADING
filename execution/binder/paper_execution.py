@@ -28,6 +28,7 @@ from execution.binder.contracts import (
 from execution.binder.engine import CycleEngine
 from execution.binder.order_ledger_jsonl import JsonlOrderLedger
 from execution.binder.planner import ExecutionPlanner
+from execution.binder.proof_policy import ProofPolicy
 from governance.bridge.governance_bridge import KX108GovernanceBridge
 from governance.bridge.kx108_client import KX108Client
 from market.adapters.alpaca.alpaca_broker import AlpacaBroker
@@ -68,6 +69,7 @@ def build_paper_cycle_engine(
     planner: Optional[PlannerPort] = None,
     clock: Optional[ClockPort] = None,
     proof: Optional[ProofPort] = None,
+    proof_policy: ProofPolicy = ProofPolicy.BEST_EFFORT,
 ) -> CycleEngine:
     """
     Assemble un `CycleEngine` PAPER complet : Bridge -> Binder -> Alpaca.
@@ -86,6 +88,11 @@ def build_paper_cycle_engine(
     (typiquement `proof.receipts.receipt_store.ReceiptStore`). Si omis
     (defaut `None`), le comportement est identique a F6 : `CycleEngine`
     chaine ses receipts en memoire depuis `GENESIS_HASH` sans les persister.
+
+    `proof_policy` (F11, additif, retro-compatible) : defaut
+    `ProofPolicy.BEST_EFFORT` (comportement identique a avant F11). Le
+    chemin gouverne critique doit passer explicitement
+    `ProofPolicy.REQUIRED` — voir execution/binder/proof_policy.py.
     """
     config = alpaca_config or AlpacaConfig.from_env()
     require_paper_mode(config)  # leve LiveModeRejected avant toute construction broker
@@ -109,4 +116,5 @@ def build_paper_cycle_engine(
         planner=planner or ExecutionPlanner(),
         order_ledger=order_ledger,
         proof=proof,
+        proof_policy=proof_policy,
     )
