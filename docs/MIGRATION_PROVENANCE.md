@@ -1498,5 +1498,51 @@ Audit read-only initial : `domains/trading/trading_x108_gate.py` (core) delegue 
 5. Les 17 agents ne consomment pas encore de `CalibrationPack` (aucune raison de le faire cablé sans vraies donnees pour l'alimenter).
 6. Certains agents (ex. `LiquidityAgent`) retombent silencieusement sur une valeur par defaut (`spreads_bps[-1] if ... else 0.0`) plutot que de produire un `unknown` explicite quand la donnee manque — gap identifie, non corrige ici (modifier les 17 agents est hors scope F13 sauf necessite demontree, et ce n'est pas un defaut introduit par F13).
 
-### Verdict
+### Verdict (etat initial, avant credentials)
 **F13_REAL_TRADING_CALIBRATION_NOT_CLOSED** — l'infrastructure de calibration est construite, deterministe, testee et honnete sur son propre etat, mais aucune calibration reelle n'a pu etre effectuee faute d'acces a des donnees de marche reelles dans cet environnement (verifie par un appel HTTP direct, pas suppose). Reprendre F13 des que des credentials Alpaca reels seront disponibles : `attempt_real_historical_dataset` et `CalibrationPack` sont concus pour recevoir ces donnees sans modification.
+
+---
+
+## F13 (suite) — Calibration reelle obtenue apres fourniture de credentials Alpaca paper
+
+**Changement de contexte** : l'utilisateur a fourni de vraies cles API Alpaca **paper trading**, placees dans `C:\Users\User\Desktop\OBSIDIA_TRADING\.env` (fichier local, git-ignore, jamais suivi, jamais affiche/logge/commite a aucun moment — verifie par `git status --short` a chaque etape). Un appel direct a `https://data.alpaca.markets/v2/stocks/AAPL/bars` avec ces credentials retourne HTTP 200.
+
+**Bug decouvert et corrige (marche/adapters/alpaca/real_dataset_attempt.py)** : sans parametre `start` explicite, l'endpoint Alpaca ne retourne que la derniere barre disponible (`observation_count=1` avec `limit=200`), quel que soit `limit`. Correction : ajout d'une fenetre `start`/`end` explicite (`_default_window`, `lookback_days=200` par defaut) + `feed=iex` (feed gratuit, evite une restriction SIP). Avec cette correction : **171 barres reelles AAPL** recuperees (2026-01-14 -> 2026-09-18).
+
+**Nouveau module** `domain/calibration_estimation.py` (fonctions pures, aucun import governance/execution.binder, verifie par AST) :
+- `estimate_realized_volatility` : ecart-type empirique annualise (seuil minimal 10 observations).
+- `estimate_garch_1_1` : recherche en grille sur (alpha, beta) sous contrainte de stationnarite (alpha+beta<1), omega par variance targeting, minimisation de la NLL gaussienne (seuil minimal 30 observations). Methode simple et documentee (pas une MLE complete), mais un vrai ajustement sur donnees, pas des coefficients devines.
+- `estimate_markov_regime_matrix` : classification des rendements par quantiles empiriques de |rendement| (proxy de volatilite locale), comptage reel des transitions, lissage de Laplace (+1/cellule) pour eviter les lignes a zero observation (seuil minimal 30 observations). Documente explicitement comme un decoupage empirique par magnitude, PAS une detection de "regime de marche vrai".
+
+**Extension `market/adapters/alpaca/real_dataset_attempt.py`** : nouvelle fonction `attempt_real_historical_dataset_with_closes` (a cote de la fonction existante, non modifiee dans son comportement de base si `lookback_days` par defaut est utilise) qui renvoie en plus la liste des prix de cloture reels, necessaire pour calculer les rendements.
+
+**Resultat de calibration reel obtenu** (AAPL, fenetre train = 70% des 170 rendements = 118 observations, fenetre eval = 52 observations restantes, **disjointes**) :
+- `realized_volatility` : **CALIBRATED**, vol annualisee ~27.2% (methode : ecart-type empirique, echantillon=118) — plausible pour AAPL, pas verifiee contre une source tierce mais coherente avec l'ordre de grandeur connu du marche actions.
+- `garch_1_1` : **CALIBRATED**, omega=3.82e-05, alpha=0.02, beta=0.85 (grille alpha/beta, NLL minimisee = -420.67 in-sample). Evaluation hors-echantillon (fenetre eval, memes parametres) : NLL = -182.95 sur 52 observations. Ramene par observation : -3.57 (train) vs -3.52 (eval) — **coherence raisonnable**, pas de divergence numerique grossiere entre fit et validation.
+- `markov_regime_matrix` : **CALIBRATED**, 2 regimes, seuil de classification = 0.00945 (quantile empirique de |rendement|), matrice de transition reelle `[[0.508, 0.492], [0.500, 0.500]]`, 60/58 observations par regime — echantillon suffisant pour cette classification simple, sans pretention a une decouverte de regime economique.
+
+**CalibrationPack final** : `calibration_id=calib-943ad329db95c460`, `status=CALIBRATED` (les 3 modeles sont CALIBRATED, aucun UNCALIBRATED parmi eux), `dataset_digest` et `parameters_digest` recalcules et stables (deterministes, verifies par test).
+
+**Train/validation (H)** : separation stricte 70/30 sur l'ordre chronologique (pas de melange aleatoire qui romprait la causalite temporelle), documentee explicitement dans chaque `ModelCalibration.calibration_window`.
+
+**Real Kernel observations (G)** : un cas construit a partir de la volatilite REELLEMENT estimee (`H_score`/`A_score` derives de `annualized_vol` via un mappage simple et documente, pas une formule officielle du domaine) envoye au vrai Kernel (`RealKX108Client`, meme process que F12) — reponse recue et structurellement validee (`verdict` ou `x108_gate` present). Rapport strict "input contenait telle volatilite reelle -> Kernel a repondu tel verdict", **aucune causalite affirmee au-dela de ce que le test verifie**. Aucun parametre de calibration n'a ete ajuste en fonction de cette reponse (verifie par test AST : aucun import governance/execution.binder dans le code d'estimation/calibration).
+
+**Nouveaux tests** :
+- `tests/unit/test_calibration_estimation.py` (11 tests, aucun reseau) : determinisme, seuils d'insuffisance, contrainte de stationnarite GARCH, lignes de matrice Markov sommant a 1, aucun import interdit.
+- `tests/integration/test_real_market_calibration.py` (13 tests, credentials requises via fixture `real_alpaca_env` qui charge `.env` avec `monkeypatch` — **skip proprement si absentes**, jamais un echec) : digest deterministe, symboles differents -> digests differents, provenance conservee, donnees insuffisantes -> statut honnete, staleness, Markov/GARCH calibres depuis donnees reelles, dataset genuinement reel (pas un placeholder deguise), separation train/eval, roster natif non affecte, **round-trip Kernel reel avec cas derive de la calibration**, Kernel non modifie, aucune boucle de retroaction verdict->parametre.
+- **Verifie explicitement** : `test_calibration_pack.py::test_real_dataset_attempt_is_honest_about_missing_credentials` continue de passer quel que soit l'ordre d'execution (le chargement de `.env` est scope par `monkeypatch` dans le nouveau fichier, jamais une mutation globale de `os.environ`).
+
+**Suite complete** : `pytest tests/ -q` -> **261 passed, 1 skipped, 1 failed** (flip de scope seal attendu — 91 fichiers vs 87, `domain/calibration_estimation.py` + les 2 nouveaux fichiers de test dans le perimetre `apps/**`/`domain/**` couvert par `SEAL_SCOPE.md`), **0 regression fonctionnelle** sur les 237 precedents (24 nouveaux tests : 11 + 13).
+
+**Kernel boundary** : `git status --short` sur le core -> uniquement le diff `merkle_seal.json` preexistant, `git log -1` inchange (`c306fa33`). **KERNEL FILES MODIFIED = 0**.
+
+**Dette restante, aucune cachee** :
+1. Un seul symbole calibre (AAPL) — pas de matrice multi-symboles/multi-classes d'actifs.
+2. Les 17 agents ne consomment toujours pas le `CalibrationPack` (gap deja identifie avant credentials, toujours hors scope — brancher un mecanisme commun necessiterait une decision de conception separee, pas une extension mecanique).
+3. GARCH calibre par recherche en grille simple, pas une MLE continue complete — documente comme tel, pas une limitation cachee.
+4. Une seule fenetre temporelle testee (mars-septembre 2026) — pas de matrice "normal / haute volatilite / faible liquidite / trend / range" (necessiterait plusieurs fenetres historiques distinctes et plus de credits API pour les recuperer, non tente ici pour rester dans un scope raisonnable).
+5. Le mappage volatilite-reelle -> payload IR Kernel (`H_score`/`A_score`) est un choix simple et documente, pas une formule officielle du domaine metier.
+6. Gap deja identifie (LiquidityAgent et defauts silencieux) toujours non corrige, hors scope F13.
+
+### Verdict final
+**F13_REAL_TRADING_CALIBRATION_CLOSED** — une calibration reelle, deterministe et reproductible (memes donnees + meme methode -> memes digests, verifie par test) a ete produite a partir de 171 observations de marche reelles (Alpaca paper, AAPL, 2026-01-14 -> 2026-09-18), avec separation train/eval stricte, statuts honnetes par modele, et une observation Kernel reelle derivee de cette calibration sans boucle de retroaction. Le perimetre reste volontairement etroit (1 symbole, 1 fenetre) — documente comme dette, pas dissimule.
