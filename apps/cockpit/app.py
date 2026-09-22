@@ -17,6 +17,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from apps.cockpit.naive_vs_governed_view import render_naive_vs_governed
 from apps.cockpit.presenter import build_cockpit_view, build_replay_view
 from apps.cockpit.scenarios import SCENARIOS, run_scenario, scenario_by_key
 from proof.receipts.receipt_store import ReceiptStore
@@ -44,6 +45,12 @@ st.markdown(
 )
 
 st.warning(f"⚠️ {('TEST FIXTURE — NOT REAL KX108')} — aucun Kernel X-108 réel n'est branché à ce Cockpit.")
+
+page = st.sidebar.radio("Vue", ["Cockpit (scénarios F9)", "Naive vs Governed"])
+
+if page == "Naive vs Governed":
+    render_naive_vs_governed(store)
+    st.stop()
 
 labels = [f"{s.label}" for s in SCENARIOS] + ["8. Replay d'un cycle précédent"]
 choice = st.selectbox("Scénario", labels)
