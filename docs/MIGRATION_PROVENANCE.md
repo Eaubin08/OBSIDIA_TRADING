@@ -1369,3 +1369,55 @@ Le périmètre du seal F10 (`docs/SEAL_SCOPE.md`) inclut `apps/**/*.py`. L'ajout
 
 ### Statut
 DONE, avec le point de seal-scope documenté ci-dessus comme dette explicite de cette branche démo (pas cachée).
+
+## F11 — PROOF_REQUIRED (branche `feature/f11-proof-required`, depuis v0.2.4 / `6864d38`)
+
+### Audit initial (avant tout patch)
+`execution/binder/engine.py::_prove()` (avant F11) appelait `self.proof.record(receipt)` dans un `try/except Exception` qui se contentait de logger une note (`echec d'ecriture de la preuve`) sans jamais relever l'exception ni marquer le `CycleOutcome`. Deux consequences non documentees jusqu'ici :
+1. Le `CycleOutcome` retourne a l'appelant ne portait **aucune indication** que la persistance avait echoue -- `outcome.error` reste `None`, un cycle apparemment normal.
+2. `_last_receipt_hash` avancait quand meme sur le hash du receipt **jamais persiste**, ce qui aurait casse la chaine reellement stockee au prochain cycle reussi (son `previous_receipt_hash` aurait pointe vers un hash absent du store).
+
+`execution/binder/engine.py::_execute()` (F3/F6) avait deja un mecanisme de preuve pre-execution, mais via `order_ledger` (pas `proof`/`CycleReceipt`) : `order_ledger.append(SUBMISSION_INTENT_RECORDED)` avant tout `broker.submit()` -- si cette ecriture echoue, l'execution est refusee avant tout appel broker. Ce mecanisme existant satisfait deja partiellement l'invariant "pas d'action sans preuve pre-execution", mais uniquement cote ledger, pas cote port de preuve (`ProofPort`).
+
+### Risque identifie
+`broker side effect succeeds` + `proof persistence fails` : un ordre PAPER peut etre reellement accepte par le broker alors que le `CycleReceipt` final echoue a se persister durablement. Aucune transaction atomique n'existe (ni ne peut exister honnetement) entre le store de preuve local et l'API broker externe.
+
+### Architecture retenue
+Changement minimal, pas de reecriture :
+- `execution/binder/proof_policy.py` (nouveau) : `ProofPolicy` (`BEST_EFFORT` par defaut, `REQUIRED`) et `ProofOutcome` (`NOT_APPLICABLE`, `PROVEN`, `PRE_EXECUTION_PROOF_FAILURE`, `ABSTENTION_PROOF_INCOMPLETE`, `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE`).
+- `CycleEngine.__init__` accepte `proof_policy` (defaut `BEST_EFFORT`, retro-compatible avec tous les appelants existants).
+- `_execute()` : sous `ProofPolicy.REQUIRED` uniquement, une lecture legere (`self.proof.last_hash()`, jamais une ecriture) sonde la joignabilite du port de preuve **avant** tout appel broker. Si elle echoue, l'execution est refusee, aucun ordre ne part (`ExecutionResult.not_submitted`). C'est la seule difference comportementale de `REQUIRED` -- le reste (rapport honnete post-execution) est identique dans les deux politiques, car mentir sur l'issue n'est jamais acceptable quelle que soit la politique.
+- `_prove()` : `self.proof.record(receipt)` est toujours tente ; en cas d'echec, `_last_receipt_hash` **n'avance plus** (corrige le bug de derive de chaine decrit ci-dessus, independamment de la politique), et `CycleOutcome.proof_outcome` porte `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE` si `execution.touched_the_market` etait vrai, sinon `ABSTENTION_PROOF_INCOMPLETE`. Jamais "rien ne s'est passe", jamais "echec d'execution" quand le broker a pu accepter l'ordre.
+- `CycleOutcome` gagne un champ `proof_outcome` (valeur par defaut `NOT_APPLICABLE`, retro-compatible).
+- `paper_execution.py::build_paper_cycle_engine` expose `proof_policy` (defaut `BEST_EFFORT`, inchange pour tous les appelants existants -- Cockpit, demo Naive vs Governed, F8.5/F8.6).
+- Pourquoi pas un receipt "pre-execution attempt" separe via le `ProofPort` (option evoquee dans la demande) : le mecanisme `order_ledger` remplit deja ce role pour la durabilite de l'intention, et creer un second systeme de preuve pre-execution via `CycleReceipt` aurait duplique une garantie deja tenue ailleurs -- contraire a la consigne "pas de second systeme parallele".
+
+### Fichiers modifies
+- `execution/binder/proof_policy.py` (nouveau)
+- `execution/binder/engine.py` (constructeur, `_execute`, `_prove`, `CycleOutcome`, docstring)
+- `execution/binder/paper_execution.py` (parametre `proof_policy` expose, retro-compatible)
+- `tests/integration/test_proof_required.py` (nouveau, 10 tests)
+
+### Nouveaux invariants
+1. Un receipt jamais persiste ne fait jamais avancer la chaine en memoire.
+2. `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE` != succes, != echec : incertitude reelle preservee, jamais resolue silencieusement.
+3. Sous `ProofPolicy.REQUIRED`, un port de preuve injoignable bloque l'execution **avant** tout appel broker.
+4. `proof != authority` : aucun de ces changements ne touche `KX108GovernanceBridge`, l'autorite du Binder, ou le contrat canonique.
+
+### Tests ajoutes (10, mapping avec les 13 cas demandes)
+1-2 (HOLD/BLOCK, `proof` reel) . 3 (ACT+Binder refuse) . 4 (proof injoignable avant execution, bloque sous REQUIRED, pas sous BEST_EFFORT -- 2 tests) . 5 (succes complet prouve) . 6 (echec broker durablement prouve) . 7 (succes broker + echec preuve finale = `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE`, + variante HOLD = `ABSTENTION_PROOF_INCOMPLETE`) . chaine (receipt fantome n'avance jamais le pointeur, `ReceiptChainVerifier` confirme `VALID`). Cas 8-13 (idempotence, replay, hash-chain/alteration, Native/External, PAPER only) : couverts par les tests F6/F7/F8.5/F8.6 existants, inchanges par F11 (`BEST_EFFORT` par defaut y preserve le comportement exact d'avant F11) -- non dupliques.
+
+### Resultat pytest
+`pytest tests/ -q` -> **197 passed, 1 skipped, 1 failed**. Le seul echec est le test de coherence de perimetre du seal (`test_freeze_manifest.py`, attendu et documente : deux nouveaux fichiers de production sous `execution/binder/` font passer le compte scelle de 87 a 88 -- le seal v0.2.4 n'a pas ete touche, conformement a la consigne "ne repare pas le seal au milieu du chantier").
+
+### Regressions
+**0 / 188** (baseline exacte preservee). +10 nouveaux tests, le seul delta de comptage est le flip attendu du test de seal.
+
+### Dette restante (volontairement non resolue par F11)
+- Pas de vraie transaction distribuee entre le proof store et l'API broker (assume comme limite reelle, pas une dette a combler par un mensonge architectural).
+- `ProofPolicy.REQUIRED` n'est pas le defaut de `build_paper_cycle_engine` -- un appelant doit l'activer explicitement pour le chemin gouverne critique.
+- Aucun mecanisme de reprise automatique (retry/replay) pour re-tenter la persistance d'un receipt en `EXECUTION_SUCCEEDED_PROOF_INCOMPLETE` -- l'etat est honnetement expose, pas resolu.
+- Vrai Kernel X-108 toujours non branche (inchange, hors perimetre F11).
+
+### Verdict
+**F11_PROOF_REQUIRED_CLOSED**

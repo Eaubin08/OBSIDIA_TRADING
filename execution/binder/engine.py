@@ -20,6 +20,14 @@ Invariants tenus par ce module, et verifies par les tests :
   2. ACT, HOLD et BLOCK produisent tous un receipt.
   3. Le moteur n'importe rien de Streamlit, ni d'aucune UI.
   4. Meme etat et meme horloge produisent la meme decision et le meme hash.
+  5. (F11) Un cycle ne pretend jamais a une preuve qu'il n'a pas. Si la
+     persistance du receipt echoue apres que le broker ait potentiellement
+     accepte un ordre, `CycleOutcome.proof_outcome` porte
+     EXECUTION_SUCCEEDED_PROOF_INCOMPLETE — jamais un succes silencieux,
+     jamais un faux echec. Sous `ProofPolicy.REQUIRED`, un port de preuve
+     injoignable AVANT tout appel broker bloque l'execution elle-meme (voir
+     execution/binder/proof_policy.py). Proof != authority : cette regle ne
+     change jamais qui decide (KX108) ni qui execute (Binder).
 """
 from __future__ import annotations
 
@@ -56,6 +64,7 @@ from execution.binder.contracts import (
     SizingPort,
     StrategyPort,
 )
+from execution.binder.proof_policy import ProofOutcome, ProofPolicy
 
 logger = logging.getLogger("obsidia.runtime")
 
@@ -81,6 +90,7 @@ class CycleOutcome:
     strategies: Sequence[StrategyCandidate] = field(default_factory=tuple)
     events: List[str] = field(default_factory=list)
     error: Optional[str] = None
+    proof_outcome: ProofOutcome = ProofOutcome.NOT_APPLICABLE
 
     @property
     def authority(self) -> Optional[Authority]:
@@ -104,6 +114,7 @@ class CycleOutcome:
             "events": list(self.events),
             "touched_the_market": self.touched_the_market,
             "error": self.error,
+            "proof_outcome": self.proof_outcome.value,
         }
 
 
@@ -133,6 +144,7 @@ class CycleEngine:
         sizing: Optional[SizingPort] = None,
         planner: Optional[PlannerPort] = None,
         proof: Optional[Any] = None,
+        proof_policy: ProofPolicy = ProofPolicy.BEST_EFFORT,
         order_ledger: Optional[OrderLedgerPort] = None,
         advance_world: Optional[Any] = None,
     ) -> None:
@@ -149,6 +161,7 @@ class CycleEngine:
         self.sizing = sizing
         self.planner = planner
         self.proof = proof
+        self.proof_policy = proof_policy
         self.order_ledger = order_ledger
         # Fait progresser le monde d'un pas avant l'observation. Separer
         # « le monde avance » de « on l'observe » evite que lire un etat
@@ -217,7 +230,7 @@ class CycleEngine:
             decision = self._abstain(
                 cycle_id, "aucun instrument observable dans l'etat courant"
             )
-            receipt = self._prove(
+            receipt, proof_outcome = self._prove(
                 cycle_id, state, decision, None, None, note, opportunities, ()
             )
             return CycleOutcome(
@@ -228,6 +241,7 @@ class CycleEngine:
                 receipt=receipt,
                 opportunities=tuple(opportunities),
                 events=events,
+                proof_outcome=proof_outcome,
             )
 
         # ── 3. Analyser et agreger ────────────────────────────────────────
@@ -269,7 +283,7 @@ class CycleEngine:
         execution = self._execute(cycle_id, decision, plan, note)
 
         # ── 8. Prouver ────────────────────────────────────────────────────
-        receipt = self._prove(
+        receipt, proof_outcome = self._prove(
             cycle_id, state, decision, plan, execution, note, opportunities, strategies
         )
 
@@ -286,6 +300,7 @@ class CycleEngine:
             opportunities=tuple(opportunities),
             strategies=tuple(strategies),
             events=events,
+            proof_outcome=proof_outcome,
         )
 
     # ─────────────────────────────────────────────────────────────────────
@@ -458,6 +473,21 @@ class CycleEngine:
             self._record_ledger_result(cycle_id, result, note)
             return result
 
+        if self.proof_policy is ProofPolicy.REQUIRED and self.proof is not None:
+            # F11 : seule difference comportementale de REQUIRED. On ne
+            # demarre pas une action irreversible en sachant deja que le
+            # port de preuve est injoignable. Une lecture legere
+            # (last_hash, jamais une ecriture) suffit a verifier qu'il
+            # repond avant tout contact broker.
+            try:
+                self.proof.last_hash()
+            except Exception as exc:  # noqa: BLE001
+                reason = f"preuve indisponible avant execution (PROOF_REQUIRED): {exc}"
+                note(f"execution refusee : {reason}")
+                result = ExecutionResult.not_submitted(plan, reason)
+                self._record_ledger_result(cycle_id, result, note)
+                return result
+
         if self.order_ledger is not None:
             blocker = self.order_ledger.submission_blocker(plan)
             if blocker:
@@ -539,7 +569,7 @@ class CycleEngine:
         note,
         opportunities: Sequence[Opportunity] = (),
         strategies: Sequence[StrategyCandidate] = (),
-    ) -> CycleReceipt:
+    ) -> tuple[CycleReceipt, ProofOutcome]:
         """Emet le receipt du cycle. Toujours, quelle que soit l'autorite."""
         extensions = {
             "pass6": {
@@ -580,16 +610,45 @@ class CycleEngine:
         # conserve : un decorateur (extension ERC-8004, par exemple) peut
         # enrichir le receipt avant stockage, et c'est cette version enrichie
         # qui fait foi. Se fier au receipt local romprait la chaine.
-        if self.proof is not None:
+        #
+        # F11 : si l'ecriture echoue, on ne fait PAS comme si de rien
+        # n'etait. Deux consequences distinctes, jamais confondues :
+        #   1. `_last_receipt_hash` n'avance PAS sur un receipt jamais
+        #      persiste — sinon le PROCHAIN receipt reellement ecrit
+        #      chainerait sur un hash absent du store, et
+        #      `verify_chain`/`ReceiptChainVerifier` signalerait une
+        #      rupture qui n'existait pas avant cet echec (le store
+        #      resterait valide jusqu'au dernier receipt REELLEMENT ecrit).
+        #   2. l'appelant recoit un `proof_outcome` honnete : jamais
+        #      "rien ne s'est passe", jamais "echec d'execution", quand le
+        #      broker a pu accepter l'ordre malgre l'echec de preuve.
+        if self.proof is None:
+            proof_outcome = ProofOutcome.NOT_APPLICABLE
+            digest = receipt.decision_hash()
+            self._last_receipt_hash = digest
+        else:
             try:
-                receipt = self.proof.record(receipt) or receipt
+                persisted = self.proof.record(receipt)
+                receipt = persisted or receipt
+                digest = receipt.decision_hash()
+                self._last_receipt_hash = digest
+                proof_outcome = ProofOutcome.PROVEN
             except Exception as exc:  # noqa: BLE001
                 note(f"echec d'ecriture de la preuve: {exc}")
+                if execution is not None and execution.touched_the_market:
+                    proof_outcome = ProofOutcome.EXECUTION_SUCCEEDED_PROOF_INCOMPLETE
+                    note(
+                        "ATTENTION: le broker a pu accepter l'ordre mais le receipt "
+                        "final n'a pas pu etre persiste durablement — issue reelle "
+                        "inconnue tant que la preuve n'est pas reconstituee"
+                    )
+                else:
+                    proof_outcome = ProofOutcome.ABSTENTION_PROOF_INCOMPLETE
+                digest = receipt.decision_hash()
+                # _last_receipt_hash volontairement NON modifie : voir note ci-dessus.
 
-        digest = receipt.decision_hash()
-        self._last_receipt_hash = digest
-        note(f"receipt finalized {digest[:12]}")
-        return receipt
+        note(f"receipt finalized {digest[:12]} proof={proof_outcome.value}")
+        return receipt, proof_outcome
 
     @staticmethod
     def _consequence(execution: Optional[ExecutionResult]) -> Dict[str, Any]:
