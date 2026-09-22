@@ -35,6 +35,7 @@ from domain.proposal import Consensus, SizingDecision, StrategyCandidate
 from domain.types import ActionKind, AssetClass, DataQuality, Mode, OrderType, Provenance
 from execution.binder.engine import CycleEngine
 from execution.binder.planner import ExecutionPlanner
+from execution.binder.proof_policy import ProofPolicy
 from external.adapters.base_adapter import ExternalStackAnalysisAdapter
 from external.examples.brother_stack.example_adapter import ExampleBrotherStackAdapter
 from governance.bridge.governance_bridge import KX108GovernanceBridge
@@ -169,13 +170,16 @@ def real_kernel_process():
 
 
 def _run_cycle(analysis, store: ReceiptStore):
+    # F12.1 : le Reference Runtime (vrai Kernel) exige ProofPolicy.REQUIRED
+    # explicitement -- CycleEngine refuse desormais la combinaison
+    # RealKX108Client + BEST_EFFORT par construction (execution/binder/engine.py).
     bridge = KX108GovernanceBridge(RealKX108Client())
     broker = _FakeBroker()
     engine = CycleEngine(
         market_data=_FakeMarketData(), broker=broker, analysis=analysis,
         aggregation=_FakeAggregation(), authority=bridge, symbols=[SYMBOL],
         mode=Mode.PAPER, strategy=_FakeStrategy(), sizing=_FakeSizing(),
-        planner=ExecutionPlanner(), proof=store,
+        planner=ExecutionPlanner(), proof=store, proof_policy=ProofPolicy.REQUIRED,
     )
     outcome = engine.run_cycle()
     return outcome, broker

@@ -118,6 +118,51 @@ class CycleOutcome:
         }
 
 
+class RealKernelRequiresProofRequired(RuntimeError):
+    """
+    F12.1 — Le Reference Runtime (vrai Kernel X-108 + gouvernance + Binder)
+    ne doit jamais se construire silencieusement sous ProofPolicy.BEST_EFFORT.
+
+    ProofPolicy.BEST_EFFORT reste disponible ailleurs (tests, demo, chemins
+    explicitement non critiques) : c'est le defaut historique, et il n'est
+    pas retire. Cette exception ne bloque qu'un seul cas precis : un
+    `CycleEngine` construit avec une autorite qui appelle reellement le
+    Kernel reel (`RealKX108Client`, F12) sans que l'appelant n'ait choisi
+    explicitement `ProofPolicy.REQUIRED`. Le correctif est toujours du cote
+    de l'appelant : passer `proof_policy=ProofPolicy.REQUIRED`.
+    """
+
+
+def _reject_implicit_best_effort_with_real_kernel(
+    authority: AuthorityPort, proof_policy: ProofPolicy
+) -> None:
+    """
+    Garde-fou F12.1, par construction plutot que par convention.
+
+    Import local (jamais au niveau module) : `execution/binder/engine.py`
+    reste decouple de `governance/bridge/` — n'importe quelle implementation
+    de `AuthorityPort` peut etre injectee sans que ce module en connaisse la
+    nature. On introspecte ici uniquement pour refuser une combinaison
+    dangereuse, jamais pour dependre structurellement de KX108GovernanceBridge.
+    """
+    if proof_policy is not ProofPolicy.BEST_EFFORT:
+        return
+    try:
+        from governance.bridge.governance_bridge import KX108GovernanceBridge
+        from governance.bridge.kx108_client import RealKX108Client
+    except ImportError:  # pragma: no cover - governance/bridge toujours present ici
+        return
+    if isinstance(authority, KX108GovernanceBridge) and isinstance(
+        authority.client, RealKX108Client
+    ):
+        raise RealKernelRequiresProofRequired(
+            "RealKX108Client (vrai Kernel X-108) ne peut pas etre associe a "
+            "ProofPolicy.BEST_EFFORT : le chemin gouverne critique exige "
+            "ProofPolicy.REQUIRED. Passez proof_policy=ProofPolicy.REQUIRED "
+            "explicitement a CycleEngine (ou a build_paper_cycle_engine)."
+        )
+
+
 class CycleEngine:
     """
     Orchestrateur du cycle decisionnel.
@@ -163,6 +208,7 @@ class CycleEngine:
         self.proof = proof
         self.proof_policy = proof_policy
         self.order_ledger = order_ledger
+        _reject_implicit_best_effort_with_real_kernel(authority, proof_policy)
         # Fait progresser le monde d'un pas avant l'observation. Separer
         # « le monde avance » de « on l'observe » evite que lire un etat
         # le modifie — defaut central de ui/app.py, ou se redessiner

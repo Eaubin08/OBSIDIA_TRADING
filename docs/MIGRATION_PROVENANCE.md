@@ -1442,3 +1442,25 @@ Audit read-only initial : `domains/trading/trading_x108_gate.py` (core) delegue 
 
 ### Verdict
 **F12_REAL_KX108_INTEGRATION_CLOSED** — le vrai Kernel a ete identifie, demarre en lecture seule, joint par un round-trip reel documente ET automatise en test (Native et External), avec preuve concrete que le core n'a subi aucune modification.
+
+## F12.1 — Reference Runtime Closure (branche feature/f11-proof-required)
+
+**Audit initial** : `execution/binder/paper_execution.py::build_paper_cycle_engine` accepte `kx108_client` sans contrainte et defaut `proof_policy: ProofPolicy = ProofPolicy.BEST_EFFORT`. `execution/binder/engine.py::CycleEngine.__init__` a le meme defaut. Rien n'empechait `RealKX108Client` (F12) d'etre injecte sans jamais passer par `ProofPolicy.REQUIRED` (F11) — constate concretement dans `tests/integration/test_real_kernel_native_external.py::_run_cycle`, qui construisait `CycleEngine(...)` avec `RealKX108Client()` sans jamais specifier `proof_policy`, retombant silencieusement sur `BEST_EFFORT`.
+
+**Risque** : `RealKX108Client + ProofPolicy.BEST_EFFORT` pouvait devenir le runtime de reference par accident — un ACT reel du vrai Kernel, execute cote broker, sans que l'echec eventuel de la preuve pre-execution ne bloque quoi que ce soit (l'invariant REQUIRED n'aurait jamais ete verifie).
+
+**Correction (changement minimal, pas de nouveau builder)** : garde-fou `_reject_implicit_best_effort_with_real_kernel(authority, proof_policy)` ajoute dans `CycleEngine.__init__`, appele pour TOUTE construction de `CycleEngine` (donc aussi via `build_paper_cycle_engine`, qui l'appelle en interne). Import local (jamais au niveau module) de `KX108GovernanceBridge`/`RealKX108Client` pour preserver le decouplage existant entre `execution/binder/` et `governance/bridge/`. Si `proof_policy is BEST_EFFORT` ET que l'autorite injectee est un `KX108GovernanceBridge` enveloppant un `RealKX108Client` (introspection via la nouvelle propriete publique `KX108GovernanceBridge.client`), leve `RealKernelRequiresProofRequired` — construction refusee. `ProofPolicy.BEST_EFFORT` reste le defaut historique inchange pour tout le reste (Fixture/Unavailable/Static + Cockpit/demo/tests F6-F11), verifie par test parametrise.
+
+**Fichiers modifies** : `execution/binder/engine.py` (nouvelle exception `RealKernelRequiresProofRequired` + garde-fou), `governance/bridge/governance_bridge.py` (propriete `client` en lecture seule), `tests/integration/test_real_kernel_native_external.py` (`_run_cycle` passe desormais `proof_policy=ProofPolicy.REQUIRED` explicitement). Nouveau : `tests/unit/test_reference_runtime_proof_policy.py` (8 tests).
+
+**Runtime cible confirme** : `REAL_KX108=YES`, `PROOF_REQUIRED=YES` (impose par construction), `PAPER_ONLY=YES` (inchange), `BINDER_BYPASS=NO`.
+
+**Native** : PASS (`test_native_path_real_kernel_round_trip`, re-execute avec le vrai Kernel, desormais sous `ProofPolicy.REQUIRED`).
+**External** : PASS (`test_external_path_real_kernel_round_trip`, idem).
+
+**Tests** : `pytest tests/ -q` -> 224 passed, 1 skipped, 1 failed (meme flip de scope seal attendu depuis F12, aucun nouveau fichier ajoute au perimetre scelle). Zero regression fonctionnelle sur les 216 precedents (+8 nouveaux tests F12.1).
+
+**Kernel boundary** : `git status --short` sur le core -> uniquement le diff `merkle_seal.json` preexistant, `git log -1` inchange (`c306fa33`). `KERNEL FILES MODIFIED = 0`.
+
+### Verdict
+**F12_1_REFERENCE_RUNTIME_CLOSED** — la combinaison dangereuse (vrai Kernel + preuve best-effort silencieuse) est desormais structurellement impossible a construire, verifiee par 8 tests dedies, sans casser aucun usage BEST_EFFORT existant ni toucher au Kernel.

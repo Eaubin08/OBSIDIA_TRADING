@@ -64,6 +64,19 @@ class KX108GovernanceBridge:
     def __init__(self, client: KX108Client) -> None:
         self._client = client
 
+    @property
+    def client(self) -> KX108Client:
+        """
+        Expose le `KX108Client` injecte, en lecture seule (F12.1).
+
+        Existe uniquement pour permettre a `CycleEngine` de verifier, par
+        construction, qu'un `RealKX108Client` n'est jamais associe
+        implicitement a `ProofPolicy.BEST_EFFORT` (voir
+        execution/binder/engine.py). Ne sert a rien d'autre : le bridge
+        reste la seule chose qui appelle ce client pour decider.
+        """
+        return self._client
+
     # ── AuthorityPort ───────────────────────────────────────────────────
 
     def evaluate(
