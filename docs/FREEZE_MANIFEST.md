@@ -1,20 +1,20 @@
-# Freeze Manifest — OBSIDIA_TRADING v0.2 (ACTIVE)
+# Freeze Manifest — OBSIDIA_TRADING v0.2.1 (ACTIVE)
 
 Résumé lisible du manifest machine `docs/FREEZE_MANIFEST.json`. En cas de divergence, le `.json` fait foi.
 
-> **v0.1 (premier freeze, commit `e6ae249`/`9e68391`) reste une référence historique
-> intacte**, archivée sous `docs/history/` et vérifiable indépendamment via
-> `tests/unit/test_historical_seal_v0_1.py`. Ce document décrit désormais la version
-> **active v0.2**. Voir aussi `docs/FREEZE_MANIFEST_V0.2.md` pour le schéma détaillé
-> de promotion (parent_reference, added_capability, etc.).
+> **Lignée des versions** :
+> - `v0.1` (commit `9e68391`, tag `obsidia-trading-v0.1-historical`) — F1→F10, référence historique intacte.
+> - `v0.2` (commit `853b05e`, tag `obsidia-trading-v0.2-reference`) — première promotion de la démo Naive vs Governed. **SUPERSEDED.** Son seal était interne cohérent (vérifié indépendamment) ; la supersession vient de dettes de release identifiées ensuite (README jamais mis à jour, dépendance inutilisée, `.gitignore` incomplet, sémantique de commit ambiguë) — pas d'une corruption de contenu.
+> - `v0.2.1` (ce document, tag `obsidia-trading-v0.2.1-reference`) — corrige ces dettes de release. **Version active.**
+>
+> Aucun tag existant n'a été déplacé ni réécrit ; chaque version reste vérifiable indépendamment via son propre tag.
 
 | Champ | Valeur |
 |---|---|
 | project | OBSIDIA_TRADING |
-| freeze_version | v0.2 |
-| parent_reference | v0.1 (commit `9e68391`) |
-| git_commit | `4236edafb1f9db98143c596d23564c60392a2ded` (commit du contenu scelle — voir `commit_semantics` dans le .json ; pour une reference stable utiliser `reference_tag`) |
-| reference_tag | `obsidia-trading-v0.2-reference` |
+| freeze_version | v0.2.1 |
+| parent_reference | v0.2 (commit `853b05e`) |
+| reference_tag | `obsidia-trading-v0.2.1-reference` |
 | test_count | 188 |
 | skipped_count | 1 |
 | architecture_status | CLOSED (F1→F8.7) |
@@ -26,11 +26,13 @@ Résumé lisible du manifest machine `docs/FREEZE_MANIFEST.json`. En cas de dive
 | paper_only_status | ENFORCED |
 | kx108_status | NO_REAL_KERNEL_CONNECTED |
 
-## Capacité ajoutée depuis v0.1
+## Capacité ajoutée
 
-Naive vs Governed Demo, promue depuis `demo/naive-vs-governed-v1` (commit `2d0bb8d`)
+Naive vs Governed Demo, promue en v0.2 depuis `demo/naive-vs-governed-v1` (commit `2d0bb8d`)
 via `git merge --no-ff` (`4236eda`). Audit de promotion préalable : **PROMOTE**,
 12/12 critères PASS, aucune modification de fichier interdit, aucune nouvelle autorité.
+**v0.2.1 n'ajoute aucune capacité** — uniquement des corrections d'hygiène de release
+(README, dépendances, `.gitignore`, sémantique de metadata).
 
 ## Dettes connues (non cachées)
 
@@ -48,7 +50,7 @@ via `git merge --no-ff` (`4236eda`). Audit de promotion préalable : **PROMOTE**
 
 - Le score structurel local reste un **signal de domaine local**, jamais une autorité KX108 (`docs/B15_STRUCTURAL_SCORE_BOUNDARY.md`).
 - Ce freeze ne prouve rien sur le Kernel X-108 de production, ni sur aucune source historique externe.
-- Aucun remote git configuré, aucun push effectué à aucune étape F1→v0.2.
-- **v0.1 et v0.2 ne doivent jamais être confondus** : le seal actif à la racine (`merkle_seal.json`) couvre désormais v0.2 (87 fichiers), pas v0.1 (83 fichiers, archivé séparément).
+- Aucun remote git configuré, aucun push effectué à aucune étape F1→v0.2.1.
+- **v0.1, v0.2 et v0.2.1 ne doivent jamais être confondus** : le seal actif à la racine (`merkle_seal.json`) couvre désormais v0.2.1 (87 fichiers), pas v0.2 ni v0.1 (archivés/tagués séparément, jamais réécrits).
 
 Voir `docs/F10_HISTORICAL_REGRESSION_MATRIX.md` pour l'audit de non-régression F10.1, `docs/SEAL_SCOPE.md` pour le périmètre du seal, et `docs/history/` pour la référence v0.1 intacte.

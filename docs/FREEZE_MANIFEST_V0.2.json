@@ -1,4 +1,7 @@
 {
+  "status": "SUPERSEDED",
+  "superseded_by": "v0.2.1 (commit 391aa23, tag obsidia-trading-v0.2.1-reference)",
+  "supersession_reason": "Non pas une corruption de contenu -- le seal de ce commit (853b05e) a ete verifie interne coherent (root_hash recalcule independamment = identique a celui documente). Supersede par un audit de release pre-publication ayant identifie des dettes reelles : README jamais mis a jour depuis F1 (pas d'installation/tests/Cockpit/demo documentes), dependance python-dotenv inutilisee, .gitignore incomplet, et un champ 'current_commit' ambigu (capture avant le commit qui l'incluait, pas un hash de contenu errone). v0.2.1 corrige ces points sans changer l'architecture ni le nombre de tests.",
   "reference_version": "v0.2",
   "parent_reference": "v0.1",
   "parent_commit": "9e68391da6b5b6c631ae83b7c5383082e6f4837e",

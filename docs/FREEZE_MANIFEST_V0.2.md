@@ -1,8 +1,17 @@
 # FREEZE_MANIFEST — OBSIDIA_TRADING v0.2
 
-> Version active. La v0.1 reste archivee, intacte et independamment verifiable
-> sous `docs/history/` (voir `docs/history/FREEZE_MANIFEST_V0.1.md` et
-> `tests/unit/test_historical_seal_v0_1.py`).
+> **STATUT : SUPERSEDED par v0.2.1** (commit `391aa23`, tag `obsidia-trading-v0.2.1-reference`).
+> Ce n'est pas une corruption de contenu : le seal de ce commit (`853b05e`) a été
+> vérifié interne cohérent (root_hash recalculé indépendamment = identique). La
+> supersession vient d'un audit de release ayant trouvé des dettes réelles (README
+> obsolète, dépendance inutilisée, `.gitignore` incomplet, métadonnée de commit
+> ambiguë) — corrigées en v0.2.1 sans changement d'architecture ni de nombre de tests.
+> Ce document et le tag `obsidia-trading-v0.2-reference` restent intacts, non déplacés,
+> comme trace historique de cet état précis. Voir `docs/FREEZE_MANIFEST.md` pour la
+> version active (v0.2.1).
+>
+> La v0.1 reste archivée, intacte et indépendamment vérifiable sous `docs/history/`
+> (voir `docs/history/FREEZE_MANIFEST_V0.1.md` et `tests/unit/test_historical_seal_v0_1.py`).
 
 | Champ | Valeur |
 |---|---|
