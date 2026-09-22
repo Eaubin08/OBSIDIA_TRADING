@@ -1421,3 +1421,24 @@ Changement minimal, pas de reecriture :
 
 ### Verdict
 **F11_PROOF_REQUIRED_CLOSED**
+
+## F12 — Real KX108 Integration (branche feature/f11-proof-required)
+
+Audit read-only initial : `domains/trading/trading_x108_gate.py` (core) delegue T/H/A/S a un Kernel externe via `OBSIDIA_KERNEL_URL` (defaut `http://127.0.0.1:3001/kernel/ragnarok`). Ce Kernel EXISTE et est EXECUTABLE : `server.kernel.sealed.cjs` (racine du core), serveur Express qui spawn `python sigma/run_pipeline.py <domain> <data>`. Demarre en lecture seule (jamais modifie), un round-trip reel a ete effectue et documente integralement dans `docs/F12_REAL_KERNEL_ROUND_TRIP.md` (digests SHA-256 verifiables).
+
+**Decouverte critique** : la reponse reelle du Kernel porte la cle `x108_gate` (ACT/ALLOW/HOLD/BLOCK), PAS `verdict` comme le gate actuel du core le suppose (`kernel_decision.get("verdict","HOLD")`) — ecart de contrat preexistant cote core, non corrige ici (hors scope, Kernel jamais patche).
+
+**Ajout** : `RealKX108Client` dans `governance/bridge/kx108_client.py` (fichier existant, meme style que `UnavailableKX108Client`/`StaticKX108Client`) — transport HTTP reel, normalise `x108_gate`→`verdict` UNIQUEMENT si la valeur est dans l'ensemble attendu, sans jamais inventer une valeur absente. `FixtureKX108Client` reste TEST-ONLY, `UnavailableKX108Client` reste le fail-closed par defaut. Aucune logique decisionnelle (T/H/A/S, structural_score, theta_S) dans ce client — verifie par test structurel (scan du source).
+
+**Tests** : `tests/unit/test_real_kx108_client.py` (16, mocks HTTP : contract/parsing/fail-closed/boundary) + `tests/integration/test_real_kernel_native_external.py` (3, round-trip REEL automatise : demarre le processus Kernel scelle du core en subprocess lecture-seule, fait tourner un cycle Native ET External complet — CycleEngine/GovernanceBridge/RealKX108Client/Binder/FakeBroker PAPER — via ce Kernel reellement joignable ; skip proprement si node/port indisponibles).
+
+**Frontiere Kernel confirmee apres round-trip automatise** : `git status --short` sur le core montre uniquement le diff `merkle_seal.json` preexistant (non lie a ce travail, present depuis le tout debut de la session) ; aucun nouveau commit ; aucun tag deplace. `KERNEL FILES MODIFIED = 0`, `KERNEL COMMITS CREATED = 0`, `KERNEL TAGS MOVED = 0`.
+
+**PAPER ONLY** : `require_paper_mode` inchange, aucun bypass — meme avec Kernel reel repondant ACT, le Binder reste une barriere independante obligatoire (FakeBroker dans les tests, jamais de reseau broker reel).
+
+**Tests** : `pytest tests/ -q` -> 216 passed, 1 skipped, 1 failed (flip de scope du seal v0.2.4 attendu et volontaire — meme fichier `kx108_client.py` deja dans le perimetre scelle, contenu enrichi -> seal non regenere sur cette branche, conforme a la consigne F12/F11 "ne repare pas le seal en plein chantier"). Zero regression fonctionnelle sur les 197 precedents.
+
+**Dette restante** : contrat reel Kernel (`x108_gate`) non aligne avec le gate du core (`verdict`) — corrige uniquement cote client Trading, pas cote core (hors mandat). Pas de calibration/tuning (F13). Pas de nouveau freeze/tag/merge (attendu, decision separee).
+
+### Verdict
+**F12_REAL_KX108_INTEGRATION_CLOSED** — le vrai Kernel a ete identifie, demarre en lecture seule, joint par un round-trip reel documente ET automatise en test (Native et External), avec preuve concrete que le core n'a subi aucune modification.
