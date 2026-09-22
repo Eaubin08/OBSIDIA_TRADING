@@ -1,12 +1,12 @@
 {
-  "commit": "557837c0132522b36cd5af0aa2856abb0fe1b057",
-  "commit_semantics": "'commit' est le HEAD parent au moment ou le contenu v0.2.3 a ete assemble et scelle. Le commit de release est cree ensuite. Pour la reference stable, utiliser reference_tag.",
-  "generation_timestamp": "2026-09-22T13:50:00+00:00",
+  "commit": "c66b379a1e969c2c296fdc7edbb21e58263e1ddc",
+  "commit_semantics": "'commit' identifie le commit dont le contenu scelle (87 fichiers, merkle_seal.json hors scope) a ete recalcule localement par scripts/compute_seal.py. Le commit correctif qui enregistre ce seal peut etre ulterieur sans changer le root.",
+  "generation_timestamp": "2026-09-22T16:23:00+00:00",
   "hash_algorithm": "SHA-256",
-  "note": "Ce seal couvre uniquement le code de production et les docs de gouvernance listes dans docs/SEAL_SCOPE.md. Il ne prouve rien sur le Kernel X-108 reel, ni sur les sources historiques externes.",
+  "note": "Correction de metadata du seal apres verification locale autoritative par tests/unit/test_freeze_manifest.py. Le root precedent 275f536b... etait errone. merkle_seal.json n'est pas dans le perimetre scelle, donc cette correction ne modifie pas le contenu scelle.",
   "project": "OBSIDIA_TRADING",
   "reference_tag": "obsidia-trading-v0.2.3-reference",
-  "root_hash": "275f536b51c4ebdba1f20ee0ac79bffa1e3aca08f1e343a3b57cf6164204ae45",
+  "root_hash": "6378ce36cebac00589bcc5e1acf7d8ab974760457546141901edcf53df3117b6",
   "scope_document": "docs/SEAL_SCOPE.md",
   "sealed_file_count": 87,
   "status": "INTEGRITY_VERIFIED"
