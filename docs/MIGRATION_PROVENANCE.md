@@ -1546,3 +1546,67 @@ Audit read-only initial : `domains/trading/trading_x108_gate.py` (core) delegue 
 
 ### Verdict final
 **F13_REAL_TRADING_CALIBRATION_CLOSED** — une calibration reelle, deterministe et reproductible (memes donnees + meme methode -> memes digests, verifie par test) a ete produite a partir de 171 observations de marche reelles (Alpaca paper, AAPL, 2026-01-14 -> 2026-09-18), avec separation train/eval stricte, statuts honnetes par modele, et une observation Kernel reelle derivee de cette calibration sans boucle de retroaction. Le perimetre reste volontairement etroit (1 symbole, 1 fenetre) — documente comme dette, pas dissimule.
+
+## F13.1 — Calibration Consumption Closure
+
+### A. Audit des 17 agents (native/agents/domains/trading_agents.py)
+| Agent | Seuils actuels (fichier:ligne) | Champ calibration pertinent ? | Statut |
+|---|---|---|---|
+| MarketDataAgent (L16-21) | `change>0.001` fixe | aucun (seuil de tick, pas une statistique de vol) | NO_RELEVANT_REAL_DATA |
+| LiquidityAgent (L24-31) | `spread<12`/`>25` bps fixes | pack ne porte pas spread/volume | NO_RELEVANT_REAL_DATA |
+| **VolatilityAgent** (L34-41) | `rv20 vs rv60*1.3/0.85` | `realized_volatility`, `garch_1_1` | **CALIBRATED** (fallback + evidence) |
+| MacroAgent (L44-49) | event_risk_scores | aucune donnee macro reelle | NO_RELEVANT_REAL_DATA |
+| CorrelationAgent (L52-59) | asset_ret vs ref_ret | pack mono-symbole (AAPL seul), pas de serie de reference calibree | NO_RELEVANT_REAL_DATA |
+| EventAgent (L62-67) | event_risk_scores | aucune source evenement reelle | NO_RELEVANT_REAL_DATA |
+| MomentumAgent (L70-76) | rsi 25/75 fixes | technique, pas issu du CalibrationPack | NO_RELEVANT_REAL_DATA |
+| MeanReversionAgent (L79-88) | zscore20 | pack ne calibre pas la distribution de prix (seulement les rendements) | NO_RELEVANT_REAL_DATA |
+| BreakoutAgent (L91-101) | support/resistance | aucun champ pack correspondant | NO_RELEVANT_REAL_DATA |
+| PatternAgent (L104-113) | comptage up/down | aucun champ pack correspondant | NO_RELEVANT_REAL_DATA |
+| SentimentAgent (L116-121) | sentiment_scores | aucune source sentiment reelle | NO_RELEVANT_REAL_DATA |
+| PredictionAgent (L124-132) | composite ad hoc (rv20 brut + risk + spread) | pas branche (formule composite non liee 1:1 a un modele calibre) | NO_RELEVANT_REAL_DATA |
+| PortfolioAgent (L135-139) | drawdown/exposure fixes | etat portefeuille, pas prix | N/A |
+| ExecutionQualityAgent (L142-147) | cost_score fixe | aucune donnee cout d'execution calibree | NO_RELEVANT_REAL_DATA |
+| **RegimeShiftAgent** (L150-158) | `rv5 vs rv20*1.6` | `markov_regime_matrix` | **CALIBRATED** (evidence seule, verdict inchange) |
+| PortfolioStressAgent (L161-166) | exposure/drawdown/imbalance | etat portefeuille, pas prix | N/A |
+| ProofConsistencyAgent (L169-178) | verification structurelle | non applicable (verification de payload, pas un modele de marche) | N/A |
+
+### B. Agents reellement branches
+`CalibrationAwareVolatilityAgent` et `CalibrationAwareRegimeShiftAgent` (`native/agents/calibrated_agents.py`) — wrappers legers, la classe de base n'est jamais modifiee/reecrite. Le travail avait deja ete commence (avant une interruption de session) sous forme de deux fichiers non commites cohérents avec cette mission (`domain/calibration_consumption.py`, `native/agents/calibrated_agents.py`) — repris et completes plutot que reecrits (jugement confirme apres relecture complete : logique saine, aucun import governance/execution.binder, fallback honnete). Ajout fait ici : `garch_calibration_note()` (absent de la version initiale — le GARCH calibre en F13 n'etait jamais reellement attache a un `CalibrationPack` construit, seul `realized_volatility` l'etait) et `build_full_real_calibration_pack()` qui assemble desormais les 3 modeles (`realized_volatility`, `garch_1_1`, `markov_regime_matrix`) dans un pack unique.
+
+Volatility : si l'historique de prix est trop court pour un `rv60` fiable (<61 points, cote agent d'origine), ET qu'un `CalibrationPack` compatible existe, la volatilite journaliere calibree (desannualisee via `/sqrt(252)`) remplace le fallback arbitraire — le seuil de decision (1.3x/0.85x) reste celui de l'agent d'origine, jamais modifie. Evidence GARCH attachee independamment, jamais decisionnelle. RegimeShift : le verdict n'est jamais recalcule a partir de la matrice Markov (integrer une matrice de regimes dans la logique de decision serait une reecriture d'agent, hors scope) — seule une note d'evidence sur l'etat de calibration est attachee, tracable jusqu'au receipt.
+
+### C. Agents volontairement non branches
+Les 15 autres — voir tableau A. Raison commune : le `CalibrationPack` F13 ne porte que sur les rendements de prix d'un seul symbole (AAPL) ; aucune donnee reelle calibree n'existe pour spread/volume/macro/event/sentiment/portfolio/execution-cost/cross-asset. Brancher ces agents forcerait une calibration fictive — explicitement interdit.
+
+### D. Symbol/timeframe compatibility
+`check_compatibility()` (`domain/calibration_consumption.py`) refuse explicitement (`SYMBOL_MISMATCH`) tout usage d'un pack calibre sur un symbole different — jamais une application silencieuse. Verifie par test reel (`test_symbol_mismatch_is_refused`, `test_calibrated_volatility_agent_symbol_mismatch_is_unknown_not_silent`).
+
+### E. Staleness
+`check_compatibility(..., max_age_days=...)` compare `pack.created_at` a l'horodatage courant ; au-dela du seuil fourni par l'appelant (aucune duree universelle inventee ici), retourne `STALE`. Verifie par test (`test_stale_pack_is_refused`).
+
+### F. Provenance
+`evidence_refs_for_pack()` attache `calibration_id`/`dataset_digest`/`calibration_schema_version` (jamais le pack entier) a `AgentOutput.evidence_refs`, qui suit deja jusqu'au receipt via le mecanisme etabli en F3.5/F7.
+
+### G. Native path
+Round-trip reel confirme : donnees Alpaca reelles (AAPL) -> `build_full_real_calibration_pack` -> `build_calibrated_trading_agents` -> `NativeRosterAnalysisAdapter` (modifie pour accepter des instances pre-construites en plus des classes, retrocompatible) -> convergence canonique -> vrai Kernel (`server.kernel.sealed.cjs`) -> `Binder` -> `PAPER` -> `PROOF_REQUIRED`. PASS (`test_native_calibrated_roster_real_kernel_round_trip`).
+
+### H. External path
+Confirme independant : `ExternalStackAnalysisAdapter`/`ExampleBrotherStackAdapter` fonctionne avec de vraies donnees Alpaca sans jamais referencer le `CalibrationPack` Native (`test_external_path_independent_of_native_calibration_pack`).
+
+### I. Real Kernel observations
+Round-trips reels effectues avec le roster calibre (PASS) et avec le chemin External (PASS) — memes principes anti-causalite-inventee et anti-tuning que F13 (verifie par test AST reprenant le meme motif : aucun import `governance`/`execution.binder` dans les modules de calibration).
+
+### J. Tests
+`pytest tests/ -q` -> **283 passed, 1 skipped, 1 failed** (le failed est le flip de scope seal historique, attendu : 93 fichiers vs 87 scelles a `v0.2.4`, +2 issus de ce chantier — non reparee, comme demande). **0 regression fonctionnelle** sur les 261 precedents (22 nouveaux tests : 15 unitaires sans reseau + 7 d'integration avec Alpaca/Kernel reels).
+
+### K. Kernel boundary
+`KERNEL FILES MODIFIED = 0` — confirme (`git status --short` sur le core : seul le diff preexistant `merkle_seal.json`, commit `c306fa33` inchange).
+
+### L. Dettes restantes
+1. 15 agents sur 17 restent `NO_RELEVANT_REAL_DATA`/`N/A` — legitime tant qu'aucune donnee reelle correspondante n'existe (spread/volume/macro/event/sentiment/execution-cost/cross-asset).
+2. Un seul symbole (AAPL) — la compatibilite multi-symboles reste a construire si un second symbole est calibre.
+3. GARCH n'influence toujours aucun verdict (evidence uniquement) — brancher une vraie prevision de volatilite conditionnelle dans une decision serait une extension future, pas tentee ici (hors scope : "ne pas reecrire les 17 agents").
+4. Gaps deja identifies en F13 (LiquidityAgent seuils fixes, defauts silencieux) non corriges, toujours hors scope.
+
+### M. Verdict final
+**F13_1_CALIBRATION_CONSUMPTION_CLOSED** — les 2 agents pour lesquels une donnee reelle calibree est pertinente (Volatility, RegimeShift) la consomment reellement et de facon tracable ; les 15 autres refusent honnetement (statut explicite en table A), aucun n'a ete force. Verifie par un vrai round-trip Native ET External contre le Kernel reel, avec `PROOF_REQUIRED` actif et sans aucune boucle de retroaction verdict->calibration.

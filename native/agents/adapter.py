@@ -153,7 +153,10 @@ class NativeRosterAnalysisAdapter:
     """
 
     def __init__(self, agent_classes: Sequence[type] = ROSTER_17) -> None:
-        self._agents = [cls() for cls in agent_classes]
+        # F13.1 : accepte aussi des instances deja construites (ex: agents
+        # calibres via native/agents/calibrated_agents.py), en plus des
+        # classes historiques instanciees ici — retrocompatible.
+        self._agents = [c() if isinstance(c, type) else c for c in agent_classes]
 
     def analyse(
         self,
