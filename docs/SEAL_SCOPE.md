@@ -49,9 +49,14 @@ SHA-256, cohérent avec le reste de l'écosystème Obsidia (`merkle_seal.json` d
 
 ## Mécanisme de calcul (reproductible)
 
-1. Pour chaque fichier inclus (liste triée par chemin relatif POSIX, `/` comme séparateur), calculer `sha256(contenu_binaire_du_fichier)`.
+1. Pour chaque fichier texte inclus, lire les octets puis normaliser les fins de ligne `CRLF → LF` et `CR → LF`; calculer ensuite `sha256(contenu_canonique)`.
 2. Construire la liste triée des paires `(chemin_relatif, hash_fichier)`.
 3. Sérialiser cette liste en JSON canonique : `json.dumps(paires, sort_keys=True, separators=(",", ":"))`.
 4. `root_hash = sha256(json_canonique.encode("utf-8")).hexdigest()`.
 
 Le script `scripts/compute_seal.py` implémente exactement cet algorithme et régénère `merkle_seal.json` de façon déterministe — deux exécutions sur le même contenu produisent le même `root_hash`.
+
+
+## Canonicalisation cross-platform (v0.2.4+)
+
+Le seal ne dépend plus des fins de ligne du working tree. `scripts/compute_seal.py::canonical_file_bytes` normalise `CRLF` et `CR` vers `LF` avant le SHA-256. Cette règle évite qu'un même commit Git donne un root différent sous Windows et Linux/GitHub.

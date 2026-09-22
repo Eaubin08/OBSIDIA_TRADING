@@ -2,25 +2,26 @@
   "architecture_status": "CLOSED",
   "canonical_contract_version": "canonical.v1",
   "external_path_status": "PASS",
-  "freeze_version": "v0.2.3",
-  "parent_reference": "v0.2.2",
-  "parent_commit": "557837c0132522b36cd5af0aa2856abb0fe1b057",
-  "git_commit": "557837c",
-  "commit_semantics": "git_commit/parent_commit designent le HEAD parent utilise pour calculer le seal avant creation du commit de release. La reference stable de version est reference_tag.",
-  "reference_tag": "obsidia-trading-v0.2.3-reference",
+  "freeze_version": "v0.2.4",
+  "parent_reference": "v0.2.3",
+  "parent_commit": "5e1b175c1bc3cf1ed1fe650a319c1b559daf1d26",
+  "git_commit": "5e1b175",
+  "commit_semantics": "git_commit/parent_commit designent le HEAD parent dont le contenu fonctionnel a ete valide avant la correction du mecanisme de seal. La reference stable est reference_tag.",
+  "reference_tag": "obsidia-trading-v0.2.4-reference",
   "version_lineage": [
     "v0.1 (commit 9e68391) -- reference historique F1-F10, intacte, tag obsidia-trading-v0.1-historical.",
     "v0.2 (commit 853b05e) -- premiere promotion de la demo Naive vs Governed, tag obsidia-trading-v0.2-reference. STATUT: SUPERSEDED. Son seal a ete verifie interne coherent (root_hash recalcule independamment = identique a celui documente pour ce commit) -- ce n'est PAS une corruption de contenu. La supersession vient de dettes de release identifiees par l'audit pre-publication suivant : README jamais mis a jour depuis F1 (aucune instruction d'installation/tests/Cockpit, demo absente), dependance python-dotenv inutilisee, .gitignore incomplet, et un champ de metadonnee 'commit' ambigu dans le seal/manifests (capture avant le commit qui l'incluait lui-meme, pas un hash de contenu errone).",
     "v0.2.1 (commit 391aa23, tag obsidia-trading-v0.2.1-reference) -- corrige ces dettes de release (README reecrit, dependance retiree, gitignore durci, semantique commit/reference_tag clarifiee). STATUT: SUPERSEDED. Son seal a egalement ete verifie interne coherent -- ce n'est PAS une corruption de contenu. La supersession vient d'un residu purement textuel : README.md (perimetre scelle) mentionnait encore 'v0.2' au lieu de 'v0.2.1' a deux endroits (titre, section Current status), laisse par inadvertance car le README avait ete reecrit dans un commit anterieur a la decision de nommer cette version v0.2.1.",
     "v0.2.2 (commit 557837c, tag obsidia-trading-v0.2.2-reference) -- reference privee reproductible validee par clone vierge. STATUT: SUPERSEDED par v0.2.3 uniquement pour stabiliser les pointeurs de documentation et mettre a jour les metadonnees de publication distante ; son seal reste coherent.",
-    "v0.2.3 (parent 557837c) -- correctif documentaire/release uniquement : README pointe vers docs/FREEZE_MANIFEST.md (pointeur actif stable) et les manifests refletent la publication GitHub privee/reproductible. Reference ACTIVE. Tag obsidia-trading-v0.2.3-reference."
+    "v0.2.3 (commit c66b379, tag obsidia-trading-v0.2.3-reference) -- SUPERSEDED : tag cree avant correction autoritative du merkle_seal.json. Aucun code fonctionnel en cause ; le mecanisme de seal etait sensible aux fins de ligne du working tree.",
+    "v0.2.4 (parent 5e1b175) -- seal cross-platform : normalisation canonique CRLF/CR vers LF avant SHA-256 + .gitattributes LF. Reference ACTIVE. Tag obsidia-trading-v0.2.4-reference."
   ],
   "known_boundaries": [
     "Le score structurel local (native/agents ou governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) est un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
     "Ce freeze ne prouve rien sur le comportement du Kernel X-108 de production (scelle, externe, jamais accede depuis ce repo).",
     "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia) — voir docs/SEAL_SCOPE.md pour le perimetre exact du merkle_seal.json dedie a ce repo.",
     "Remote GitHub prive configure : Eaubin08/OBSIDIA_TRADING. La v0.2.2 a ete poussee puis validee depuis un clone vierge independant : master/tags identiques, seal 87 fichiers MATCH, Cockpit HTTP 200, aucun credential reel requis et aucune dependance locale manquante.",
-    "Les references v0.1, v0.2, v0.2.1 et v0.2.2 restent historiques et non reecrites via leurs tags respectifs. v0.2.3 est la reference active."
+    "Les references v0.1 a v0.2.3 restent historiques et non reecrites via leurs tags respectifs. v0.2.4 est la reference active."
   ],
   "known_debts": [
     "Aucun vrai Kernel X-108 branche dans ce repo : FixtureKX108Client est TEST-ONLY (tests/test_support/), le comportement de production par defaut est UnavailableKX108Client, fail-closed (Authority.HOLD sur indisponibilite ou reponse invalide).",
@@ -41,10 +42,11 @@
   "receipt_schema_version": "receipt.v1",
   "skipped_count": 1,
   "test_count": 188,
-  "timestamp": "2026-09-22T13:50:00+00:00",
-  "added_capability": "AUCUNE. v0.2.3 est un correctif documentaire/release uniquement : pointeurs README stabilises sur docs/FREEZE_MANIFEST.md et metadonnees de publication privee/reproductibilite mises a jour.",
+  "timestamp": "2026-09-22T16:35:00+00:00",
+  "added_capability": "AUCUNE capacite metier. v0.2.4 corrige uniquement le mecanisme de seal pour le rendre independant des fins de ligne de la plateforme.",
   "remote_repository": "Eaubin08/OBSIDIA_TRADING",
   "remote_visibility": "private",
   "remote_reproducibility_status": "PRIVATE_REMOTE_REPRODUCIBLE",
-  "validation_basis": "v0.2.2 : 188 passed, 1 skipped, 0 failed depuis clone vierge ; v0.2.3 ne modifie aucun fichier de code de production ni de test."
+  "validation_basis": "v0.2.3 corrected master 5e1b175 : 188 passed, 1 skipped, 0 failed. v0.2.4 ne modifie aucun mecanisme metier ni test ; le calcul de seal normalise les fins de ligne.",
+  "seal_canonicalization": "Avant SHA-256, les fichiers texte scelles sont normalises CRLF->LF puis CR->LF. Le root devient independant du checkout Windows/Linux."
 }

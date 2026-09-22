@@ -1,15 +1,14 @@
 {
-  "status": "SUPERSEDED",
-  "reference_version": "v0.2.3",
-  "parent_reference": "v0.2.2",
-  "parent_commit": "557837c0132522b36cd5af0aa2856abb0fe1b057",
-  "commit_semantics": "Le commit exact de release est cree apres calcul du seal ; parent_commit identifie l'etat de depart et reference_tag identifie la reference stable.",
-  "reference_tag": "obsidia-trading-v0.2.3-reference",
+  "status": "ACTIVE",
+  "reference_version": "v0.2.4",
+  "parent_reference": "v0.2.3",
+  "parent_commit": "5e1b175c1bc3cf1ed1fe650a319c1b559daf1d26",
+  "reference_tag": "obsidia-trading-v0.2.4-reference",
   "project": "OBSIDIA_TRADING",
   "test_count": 188,
   "skipped_count": 1,
   "failed_count": 0,
-  "test_basis": "Suite executee sur clone vierge v0.2.2 : 188 passed, 1 skipped, 0 failed. v0.2.3 ne modifie aucun fichier de code de production ni de test.",
+  "test_basis": "Suite locale sur corrected master 5e1b175 : 188 passed, 1 skipped, 0 failed. v0.2.4 ne change aucun mecanisme metier ni test.",
   "architecture_status": "CLOSED",
   "canonical_convergence_status": "CLOSED",
   "native_status": "PASS",
@@ -27,19 +26,17 @@
   "remote_repository": "Eaubin08/OBSIDIA_TRADING",
   "remote_visibility": "private",
   "remote_reproducibility_status": "PRIVATE_REMOTE_REPRODUCIBLE",
-  "added_capability": "AUCUNE. Correctif documentaire/release uniquement.",
-  "release_hygiene_fixes": [
-    "README.md : suppression des mentions de version active codees en dur dans le titre/statut ; la version active est desormais definie par docs/FREEZE_MANIFEST.md.",
-    "README.md : les deux references de manifest actif utilisent desormais docs/FREEZE_MANIFEST.md, pointeur stable non versionne.",
-    "Manifest actif : publication GitHub privee et validation clone vierge v0.2.2 documentees.",
-    "scripts/compute_seal.py : reference_tag mis a jour vers obsidia-trading-v0.2.3-reference."
-  ],
+  "added_capability": "AUCUNE. Correction du mecanisme de seal uniquement.",
+  "seal_algorithm": "SHA-256 sur liste canonique JSON de [path,file_hash], file_hash calculant SHA-256 apres normalisation CRLF->LF puis CR->LF pour les fichiers texte scelles.",
+  "seal_cross_platform": "DETERMINISTIC_LF_CANONICALIZATION",
+  "sealed_file_count": 87,
+  "expected_root_hash": "c1a4b81c61a13da077dd8d78b6c8a2698b6c670be7165baddba0c91848d86cb2",
   "known_boundaries": [
     "Le score structurel local (native/agents ou governance/bridge/local_signal.py, herite d'agent-trad-main post-B15) est un LOCAL DOMAIN SIGNAL, jamais une KX108 AUTHORITY. Voir docs/B15_STRUCTURAL_SCORE_BOUNDARY.md.",
     "Ce freeze ne prouve rien sur le comportement du Kernel X-108 de production (scelle, externe, jamais accede depuis ce repo).",
     "Ce freeze ne couvre aucune source historique externe (agent-trad-main, MVP-obsidia-, Obsidia-lab-trad, core Obsidia) — voir docs/SEAL_SCOPE.md pour le perimetre exact du merkle_seal.json dedie a ce repo.",
     "Remote GitHub prive configure : Eaubin08/OBSIDIA_TRADING. La v0.2.2 a ete poussee puis validee depuis un clone vierge independant : master/tags identiques, seal 87 fichiers MATCH, Cockpit HTTP 200, aucun credential reel requis et aucune dependance locale manquante.",
-    "Les references v0.1, v0.2, v0.2.1 et v0.2.2 restent historiques et non reecrites via leurs tags respectifs. v0.2.3 est la reference active."
+    "Les references v0.1 a v0.2.3 restent historiques et non reecrites via leurs tags respectifs. v0.2.4 est la reference active."
   ],
   "known_debts": [
     "Aucun vrai Kernel X-108 branche dans ce repo : FixtureKX108Client est TEST-ONLY (tests/test_support/), le comportement de production par defaut est UnavailableKX108Client, fail-closed (Authority.HOLD sur indisponibilite ou reponse invalide).",
@@ -51,7 +48,5 @@
     "Packs de tests formels du Kernel (MVP-obsidia-, ex: test_absolute_hold_gate, test_non_invertible_order) NOT_PORTABLE : ils testent des invariants du Kernel X-108 reel, externe et scelle, hors perimetre inspectable depuis ce repo.",
     "Les verdicts TEST FIXTURE KX108 des scenarios B et C de la demo Naive vs Governed sont des configurations narratives fixees a l'avance (le fixture ne lit pas les unknowns/contradictions et ne derive aucun verdict a partir d'eux) — juxtaposition pedagogique, pas une causalite calculee par un Kernel reel.",
     "Le test AST d'isolation du chemin Naive scanne les imports statiques uniquement ; il ne couvre theoriquement pas un import dynamique (importlib, __import__, eval, exec). NONE FOUND dans apps/naive_vs_governed/ au moment de ce freeze (verifie par grep) — angle mort documente, pas corrige par un systeme de detection supplementaire."
-  ],
-  "superseded_by": "v0.2.4 (tag obsidia-trading-v0.2.4-reference)",
-  "supersession_reason": "Le tag v0.2.3 a ete cree avant la correction autoritative du merkle_seal.json. La suite locale a ensuite prouve 188 passed, 1 skipped, 0 failed avec le root 6378ce36... sur Windows. L'ecart avec le calcul GitHub/LF a revele que l'ancien algorithme hashait les octets du working tree et etait sensible a CRLF/LF. Aucun code fonctionnel n'etait en cause. v0.2.4 rend le seal cross-platform par normalisation canonique des fins de ligne."
+  ]
 }

@@ -58,8 +58,19 @@ def collect_sealed_files() -> list[Path]:
     return sorted(set(files), key=lambda p: p.relative_to(REPO_ROOT).as_posix())
 
 
+def canonical_file_bytes(path: Path) -> bytes:
+    """Retourne les octets canoniques d'un fichier scelle.
+
+    Tous les fichiers du scope actuel sont textuels (.py/.md). Les fins de ligne
+    sont normalisees pour rendre le seal independant du checkout Git
+    (Windows CRLF vs Linux/GitHub LF).
+    """
+    data = path.read_bytes()
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def file_hash(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(canonical_file_bytes(path)).hexdigest()
 
 
 def compute_root_hash(files: list[Path]) -> tuple[str, list[list[str]]]:
@@ -102,7 +113,7 @@ def main() -> None:
             "Pour une reference stable, utiliser reference_tag plutot que ce "
             "champ."
         ),
-        "reference_tag": "obsidia-trading-v0.2.3-reference",
+        "reference_tag": "obsidia-trading-v0.2.4-reference",
         "generation_timestamp": datetime.now(timezone.utc).isoformat(),
         "note": (
             "Ce seal couvre uniquement le code de production et les docs de "

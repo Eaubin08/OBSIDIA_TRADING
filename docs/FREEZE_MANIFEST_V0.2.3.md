@@ -1,4 +1,4 @@
-# FREEZE_MANIFEST — OBSIDIA_TRADING v0.2.3 (ACTIVE)
+# FREEZE_MANIFEST — OBSIDIA_TRADING v0.2.3 (SUPERSEDED)
 
 > Résumé lisible du manifest machine `docs/FREEZE_MANIFEST_V0.2.3.json`. En cas de divergence, le `.json` fait foi.
 
@@ -42,3 +42,6 @@ Remote : `Eaubin08/OBSIDIA_TRADING` — **PRIVATE**.
 Transport baseline : **PRIVATE_REMOTE_REPRODUCIBLE**.
 
 Le seal actif couvre 87 fichiers selon `docs/SEAL_SCOPE.md`.
+
+
+> **SUPERSEDED par v0.2.4** : aucun défaut fonctionnel. La validation locale `188 passed / 1 skipped / 0 failed` a révélé que le mécanisme de seal v0.2.3 dépendait des fins de ligne du working tree (CRLF Windows vs LF GitHub/Linux). v0.2.4 normalise désormais les fins de ligne avant hash.

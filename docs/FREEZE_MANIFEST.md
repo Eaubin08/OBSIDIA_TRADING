@@ -1,4 +1,4 @@
-# Freeze Manifest — OBSIDIA_TRADING v0.2.3 (ACTIVE)
+# Freeze Manifest — OBSIDIA_TRADING v0.2.4 (ACTIVE)
 
 Résumé lisible du manifest machine `docs/FREEZE_MANIFEST.json`. En cas de divergence, le `.json` fait foi.
 
@@ -7,16 +7,17 @@ Résumé lisible du manifest machine `docs/FREEZE_MANIFEST.json`. En cas de dive
 > - `v0.2` (commit `853b05e`, tag `obsidia-trading-v0.2-reference`) — première promotion de la démo Naive vs Governed. **SUPERSEDED.** Son seal était interne cohérent (vérifié indépendamment) ; la supersession vient de dettes de release identifiées ensuite (README jamais mis à jour, dépendance inutilisée, `.gitignore` incomplet, sémantique de commit ambiguë) — pas d'une corruption de contenu.
 > - `v0.2.1` (tag `obsidia-trading-v0.2.1-reference`) — corrige ces dettes de release. **SUPERSEDED.** Son seal était également interne cohérent ; la supersession vient d'un résidu purement textuel : `README.md` (dans le périmètre scellé) mentionnait encore "v0.2" au lieu de "v0.2.1" à deux endroits, laissé par inadvertance.
 > - `v0.2.2` (tag `obsidia-trading-v0.2.2-reference`) — référence privée reproductible validée par clone vierge. **SUPERSEDED** par v0.2.3 uniquement pour stabiliser les pointeurs de documentation et refléter la publication distante.
-> - `v0.2.3` (ce document, tag `obsidia-trading-v0.2.3-reference`) — correctif documentaire/release uniquement. **Version active.**
+> - `v0.2.3` (commit `c66b379`, tag `obsidia-trading-v0.2.3-reference`) — **SUPERSEDED** : son tag a été créé avant la correction autoritative du `merkle_seal.json`; aucun code fonctionnel n'était en cause.
+> - `v0.2.4` (ce document, tag `obsidia-trading-v0.2.4-reference`) — corrige le mécanisme de seal pour être déterministe entre LF/CRLF et devient la **Version active**.
 >
 > Aucun tag existant n'a été déplacé ni réécrit ; chaque version reste vérifiable indépendamment via son propre tag.
 
 | Champ | Valeur |
 |---|---|
 | project | OBSIDIA_TRADING |
-| freeze_version | v0.2.3 |
-| parent_reference | v0.2.2 (commit `557837c`, tag `obsidia-trading-v0.2.2-reference`) |
-| reference_tag | `obsidia-trading-v0.2.3-reference` |
+| freeze_version | v0.2.4 |
+| parent_reference | v0.2.3 / corrected master `5e1b175` |
+| reference_tag | `obsidia-trading-v0.2.4-reference` |
 | test_count | 188 |
 | skipped_count | 1 |
 | architecture_status | CLOSED (F1→F8.7) |
@@ -33,10 +34,11 @@ Résumé lisible du manifest machine `docs/FREEZE_MANIFEST.json`. En cas de dive
 Naive vs Governed Demo, promue en v0.2 depuis `demo/naive-vs-governed-v1` (commit `2d0bb8d`)
 via `git merge --no-ff` (`4236eda`). Audit de promotion préalable : **PROMOTE**,
 12/12 critères PASS, aucune modification de fichier interdit, aucune nouvelle autorité.
-**v0.2.3 n'ajoute aucune capacité** — uniquement un correctif documentaire/release :
-le README utilise désormais le pointeur stable `docs/FREEZE_MANIFEST.md` au lieu de
-liens actifs versionnés susceptibles de devenir obsolètes, et le manifest actif reflète
-la publication privée ainsi que la validation par clone vierge de v0.2.2.
+**v0.2.4 n'ajoute aucune capacité métier**. Elle corrige le mécanisme de seal :
+les fichiers texte scellés (`.py` / `.md`) sont hashés après normalisation canonique
+des fins de ligne CRLF/CR vers LF. Le même commit produit donc le même root sur
+Windows, Linux et un checkout GitHub. `.gitattributes` impose également LF pour les
+futurs checkouts.
 
 ## Dettes connues (non cachées)
 
@@ -55,7 +57,7 @@ la publication privée ainsi que la validation par clone vierge de v0.2.2.
 - Le score structurel local reste un **signal de domaine local**, jamais une autorité KX108 (`docs/B15_STRUCTURAL_SCORE_BOUNDARY.md`).
 - Ce freeze ne prouve rien sur le Kernel X-108 de production, ni sur aucune source historique externe.
 - Remote GitHub privé configuré : `Eaubin08/OBSIDIA_TRADING`. La v0.2.2 a été poussée puis validée depuis un clone vierge indépendant : master/tags identiques, seal 87 fichiers MATCH, Cockpit HTTP 200, aucune dépendance locale manquante.
-- **v0.1, v0.2, v0.2.1, v0.2.2 et v0.2.3 ne doivent jamais être confondus** : le seal actif à la racine (`merkle_seal.json`) couvre désormais v0.2.3 (87 fichiers), pas les versions précédentes (tagées séparément, jamais réécrites).
+- **v0.1 à v0.2.4 restent distinctes** : le seal actif à la racine couvre v0.2.4 (87 fichiers). Les tags antérieurs ne sont pas déplacés.
 
 Voir `docs/F10_HISTORICAL_REGRESSION_MATRIX.md` pour l'audit de non-régression F10.1, `docs/SEAL_SCOPE.md` pour le périmètre du seal, et `docs/history/` pour la référence v0.1 intacte.
 
@@ -66,4 +68,9 @@ Voir `docs/F10_HISTORICAL_REGRESSION_MATRIX.md` pour l'audit de non-régression 
 - Baseline transport validée : v0.2.2, clone vierge indépendant
 - Résultat : `PRIVATE_REMOTE_REPRODUCIBLE`
 - Suite baseline : 188 passed / 1 skipped / 0 failed
-- v0.2.3 ne modifie aucun fichier de code de production ni de test.
+- v0.2.4 ne modifie aucun mécanisme métier ; seul le mécanisme de scellement/release est rendu cross-platform.
+
+
+## Déterminisme du seal
+
+À partir de v0.2.4, `scripts/compute_seal.py` normalise `CRLF` et `CR` vers `LF` avant SHA-256 pour tous les fichiers texte scellés. Cette règle est documentée dans `docs/SEAL_SCOPE.md` et protégée par `.gitattributes`.
