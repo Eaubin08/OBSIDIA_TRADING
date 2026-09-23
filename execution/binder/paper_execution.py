@@ -24,6 +24,8 @@ from execution.binder.contracts import (
     AnalysisPort,
     AuthorityPort,
     PlannerPort,
+    SizingPort,
+    StrategyPort,
 )
 from execution.binder.engine import CycleEngine
 from execution.binder.order_ledger_jsonl import JsonlOrderLedger
@@ -66,6 +68,8 @@ def build_paper_cycle_engine(
     symbols: Sequence[str],
     order_ledger_path: str,
     alpaca_config: Optional[AlpacaConfig] = None,
+    strategy: Optional[StrategyPort] = None,
+    sizing: Optional[SizingPort] = None,
     planner: Optional[PlannerPort] = None,
     clock: Optional[ClockPort] = None,
     proof: Optional[ProofPort] = None,
@@ -93,6 +97,13 @@ def build_paper_cycle_engine(
     `ProofPolicy.BEST_EFFORT` (comportement identique a avant F11). Le
     chemin gouverne critique doit passer explicitement
     `ProofPolicy.REQUIRED` — voir execution/binder/proof_policy.py.
+
+    `strategy`/`sizing` (P1-D, additif, retro-compatible) : ports optionnels
+    transmis sans modification a `CycleEngine` (qui les accepte deja depuis
+    F3/F6). Omis (defaut `None`), le comportement est strictement identique
+    a avant P1-D : `CycleEngine._action_from` transcrit directement le
+    Consensus et `_size` retourne une `SizingDecision` "aucune strategie
+    retenue". Aucune nouvelle logique n'est ajoutee ici — pur passage.
     """
     config = alpaca_config or AlpacaConfig.from_env()
     require_paper_mode(config)  # leve LiveModeRejected avant toute construction broker
@@ -113,6 +124,8 @@ def build_paper_cycle_engine(
         symbols=list(symbols),
         mode=Mode.PAPER,
         clock=clock,
+        strategy=strategy,
+        sizing=sizing,
         planner=planner or ExecutionPlanner(),
         order_ledger=order_ledger,
         proof=proof,
