@@ -1610,3 +1610,37 @@ Round-trips reels effectues avec le roster calibre (PASS) et avec le chemin Exte
 
 ### M. Verdict final
 **F13_1_CALIBRATION_CONSUMPTION_CLOSED** — les 2 agents pour lesquels une donnee reelle calibree est pertinente (Volatility, RegimeShift) la consomment reellement et de facon tracable ; les 15 autres refusent honnetement (statut explicite en table A), aucun n'a ete force. Verifie par un vrai round-trip Native ET External contre le Kernel reel, avec `PROOF_REQUIRED` actif et sans aucune boucle de retroaction verdict->calibration.
+
+## F15 — External Stack Integration Readiness
+
+**Contexte** : la vraie stack Trading du frere de l'utilisateur n'est PAS disponible au moment de ce chantier. Objectif strict : preparer l'infrastructure d'accueil d'une future stack externe reelle, sans inventer son comportement et sans jamais pretendre l'avoir integree. Ceci n'est PAS une "REAL BROTHER STACK INTEGRATION".
+
+### A. Audit initial
+`external/` (F8) etait deja generique dans son principe (ExternalSignal/normalizer/ExternalStackAnalysisAdapter), mais incomplet pour une vraie stack tierce : pas de `symbol` obligatoire (donc pas de verification de coherence marche possible), pas de notion de fraicheur (`staleness`) du signal, pas de calibration externe representable, `ExampleBrotherStackAdapter` seule implementation concrete existante (fixture pedagogique, jamais renommee explicitement comme telle jusqu'ici).
+
+### B. Contrat etendu — `ExternalSignal` (F15)
+Ajouts additifs, retrocompatibles : `symbol` (desormais obligatoire — sans lui, aucune coherence marche verifiable), `strategy_id` (optionnel, distingue plusieurs strategies d'une meme source), `calibration: ExternalCalibrationMetadata` (jamais le CalibrationPack Native). `ExternalTradingStackPort` est un alias stable de `ExternalStackAdapter` (F8) — meme Protocol, jamais divergents.
+
+### C. Adapter generique
+`external/normalization/normalizer.py` reste le seul point de conversion vers `to_canonical_agent_signal` (F3.5) — aucune duplication. Ajout F15 : la staleness du signal et de la calibration externe voyagent comme `unknowns` explicites (`external_signal_staleness=...`, `external_calibration_staleness=...`, ou `external_calibration=NO_EXTERNAL_CALIBRATION_INFORMATION` si absente) — jamais silencieusement "FRESH" par defaut.
+
+### D. Validation / fail-closed (`ExternalSignal.from_raw_payload`)
+missing symbol/proposal/organization_id/source_id/confidence/rationale -> `InvalidExternalSignal` explicite ; confidence non numerique -> rejet ; symbol mismatch (`expected_symbol`) -> rejet, jamais utilise silencieusement ; risk_flags malforme (pas une liste de chaines) -> rejet explicite ; defense en profondeur dans `ExternalStackAnalysisAdapter.analyse` (un signal hors-symbole retourne par un adapter bugue est ignore, jamais normalise vers le mauvais marche). Staleness du signal et de la calibration externe -> `UNKNOWN`/`STALE`/`FRESH` explicites, jamais devinees (`observed_at`/`valid_until` absents -> `UNKNOWN`).
+
+### E. Cockpit readiness
+`apps/cockpit/presenter.py::_section_input` expose desormais `external_stack_readiness` : detail par signal EXTERNAL de ce cycle (stack_id/adapter_id/organization_id/strategy_id/symbol/proposal/confidence/unknowns/contradictions/risk_flags/evidence/external_calibration_id), lu uniquement depuis les `AgentOutput` deja produits — aucun recalcul. Vide (`present=False`) pour un cycle 100% Native, rendant visible la frontiere "ce que la stack propose" avant toute decision de gouvernance.
+
+### F. Frontieres d'autorite (tests structurels)
+`test_external_package_has_no_binder_or_broker_import` (F8, reconfirme) : aucun import `execution.binder`/`market.adapters.alpaca` dans `external/`. `test_normalizer_and_adapters_never_import_governance_bridge` (F8, reconfirme) : aucun import `governance.bridge` (couvre KX108Client et Governance Bridge). Nouveau F15 : `test_external_package_never_imports_kx108_client_or_authority_types_directly` — verification explicite et ciblee.
+
+### G. Tests
+`tests/unit/test_external_stack_readiness_f15.py` (12 tests) : staleness (UNKNOWN/FRESH/STALE, jamais upgrade silencieux), calibration externe absente/presente/perimee, frontiere d'autorite, PAPER only + Binder non contourne, replay sans effet de bord, provenance+calibration retrouvables apres rechargement du receipt. `tests/unit/test_cockpit_external_readiness_f15.py` (2 tests) : detail Cockpit present pour External, vide pour Native. `tests/unit/test_external_adapter.py` et `test_canonical_convergence.py` ajustes pour le nouveau champ `symbol` obligatoire (retrocompatibilite testee, pas de regression).
+
+### H. Ce qui reste a faire quand la vraie stack arrivera
+1. Une vraie implementation d'`ExternalStackAdapter` interrogeant reellement l'API/fichier/base de la stack du frere (`fetch_signals` reel, pas la fixture codee en dur).
+2. Verification empirique que le format de payload reel de sa stack correspond au contrat `ExternalSignal` (des ajustements de validation pourraient etre necessaires selon ce qu'elle produit reellement).
+3. Decision explicite sur la politique de staleness (`DEFAULT_MAX_SIGNAL_AGE_SECONDS=900s` est un placeholder de securite documente, pas une valeur calibree sur un cas d'usage reel).
+4. Round-trip reel avec le vrai Kernel X-108 pour un signal produit par la vraie stack (pas seulement la fixture) — a faire uniquement quand la stack existera.
+
+### Verdict final
+**F15_EXTERNAL_STACK_READINESS_CLOSED** pour l'infrastructure generique (contrat, adapter, validation, frontieres, Cockpit, documentation) — explicitement **PAS** une integration reelle, puisqu'aucune vraie stack externe n'existe encore pour la valider en conditions reelles.

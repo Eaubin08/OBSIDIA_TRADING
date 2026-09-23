@@ -18,11 +18,15 @@ from external.contracts.external_signal import ExternalSignal
 
 class ExampleBrotherStackAdapter:
     """
-    Adapter d'exemple pour une stack Trading tierce fictive ("brother_strategy_07").
+    TEST / DEMO FIXTURE ONLY — n'est PAS une integration reelle (F15).
 
-    Un vrai adapter interrogerait ici l'API/le fichier/la base de la stack
-    externe reelle. Celui-ci retourne un signal fixe, pour illustration
-    uniquement.
+    Adapter d'exemple pour une stack Trading tierce fictive ("brother_strategy_07").
+    Sert uniquement a exercer le contrat `ExternalTradingStackPort` /
+    `ExternalSignal` avant qu'une vraie stack externe (celle du frere de
+    l'utilisateur, ou une entreprise cliente) ne soit disponible. Ne
+    represente le comportement d'aucune stack reelle. Un vrai adapter
+    interrogerait ici l'API/le fichier/la base de la stack externe reelle ;
+    celui-ci retourne un signal fixe, pour illustration uniquement.
     """
 
     adapter_id = "brother_stack_v1"
@@ -35,11 +39,13 @@ class ExampleBrotherStackAdapter:
                     "source_id": "brother_strategy_07",
                     "organization_id": self.organization_id,
                     "adapter_id": self.adapter_id,
+                    "symbol": symbol,
                     "signal": "BUY",
                     "confidence": 0.62,
                     "rationale": f"exemple pedagogique pour {symbol} — pas une vraie strategie",
                     "unknowns": ("stack_externe_non_auditee",),
                     "risk_flags": ("aucune_verification_independante",),
-                }
+                },
+                expected_symbol=symbol,
             )
         ]

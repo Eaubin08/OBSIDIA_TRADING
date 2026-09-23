@@ -54,16 +54,40 @@ def normalize_external_signal(
         original_event_id=signal.original_event_id,
         observed_at=signal.observed_at,
     )
+
+    # F15 : la staleness et la calibration externe sont des FAITS observes,
+    # jamais des decisions — ils voyagent comme unknowns/evidence, jamais
+    # comme un verdict. "UNKNOWN" (pas de observed_at / pas de valid_until)
+    # n'est jamais transforme en "FRESH" par defaut.
+    extra_unknowns = list(signal.unknowns)
+    staleness = signal.staleness_status()
+    if staleness in ("UNKNOWN", "STALE"):
+        extra_unknowns.append(f"external_signal_staleness={staleness}")
+
+    calibration = signal.calibration
+    calibration_evidence = list(signal.evidence_refs) + list(calibration.evidence_refs)
+    if not calibration.is_present:
+        extra_unknowns.append("external_calibration=" + calibration.external_calibration_id)
+    else:
+        calib_staleness = calibration.staleness_status()
+        if calib_staleness in ("UNKNOWN", "STALE"):
+            extra_unknowns.append(f"external_calibration_staleness={calib_staleness}")
+
     return to_canonical_agent_signal(
         agent_id=signal.source_id,
         category=signal.category,
         signal=signal.signal,
         confidence=signal.confidence,
         rationale=signal.rationale,
-        unknowns=signal.unknowns,
+        unknowns=tuple(extra_unknowns),
         contradictions=signal.contradictions,
         risk_flags=signal.risk_flags,
-        evidence_refs=signal.evidence_refs,
-        operational_metadata={"raw_payload_keys": sorted(signal.raw_payload.keys())},
+        evidence_refs=tuple(calibration_evidence),
+        operational_metadata={
+            "raw_payload_keys": sorted(signal.raw_payload.keys()),
+            "symbol": signal.symbol,
+            "strategy_id": signal.strategy_id,
+            "external_calibration_id": calibration.external_calibration_id,
+        },
         source_provenance=provenance,
     )

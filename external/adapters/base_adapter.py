@@ -27,7 +27,8 @@ from external.normalization.normalizer import normalize_external_signal
 
 class ExternalStackAdapter(Protocol):
     """
-    Implemente par une integration concrete (ex: external/examples/brother_stack/).
+    Implemente par une integration concrete (ex: external/examples/brother_stack/,
+    ou une future vraie stack externe — voir docs/EXTERNAL_STACK_INTEGRATION_GUIDE.md).
 
     Ne vote jamais lui-meme, ne decide jamais, n'a jamais acces a
     Binder/Broker/Governance — seulement a la stack tierce qu'il interroge.
@@ -38,6 +39,13 @@ class ExternalStackAdapter(Protocol):
 
     def fetch_signals(self, symbol: str) -> Sequence[ExternalSignal]:
         ...
+
+
+# F15 : nom stable pour ce contrat, destine a etre le point de reference
+# documente pour une future integration reelle. `ExternalStackAdapter` reste
+# l'alias historique (F8) — les deux designent le meme Protocol, ne jamais
+# les faire diverger.
+ExternalTradingStackPort = ExternalStackAdapter
 
 
 class ExternalStackAnalysisAdapter:
@@ -62,6 +70,13 @@ class ExternalStackAnalysisAdapter:
         raw_signals = self._adapter.fetch_signals(symbol)
         outputs: List[AgentOutput] = []
         for signal in raw_signals:
+            # F15 : defense en profondeur — meme si `fetch_signals` a deja
+            # valide via `ExternalSignal.from_raw_payload(expected_symbol=...)`,
+            # un adapter concret bugue pourrait renvoyer un symbole different
+            # de celui demande. Un signal hors-symbole est REJETE ici, jamais
+            # normalise silencieusement vers le mauvais marche.
+            if signal.symbol != symbol:
+                continue
             outputs.append(
                 normalize_external_signal(
                     signal,
