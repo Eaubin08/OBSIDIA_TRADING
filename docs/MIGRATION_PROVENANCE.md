@@ -1610,3 +1610,17 @@ Round-trips reels effectues avec le roster calibre (PASS) et avec le chemin Exte
 
 ### M. Verdict final
 **F13_1_CALIBRATION_CONSUMPTION_CLOSED** — les 2 agents pour lesquels une donnee reelle calibree est pertinente (Volatility, RegimeShift) la consomment reellement et de facon tracable ; les 15 autres refusent honnetement (statut explicite en table A), aucun n'a ete force. Verifie par un vrai round-trip Native ET External contre le Kernel reel, avec `PROOF_REQUIRED` actif et sans aucune boucle de retroaction verdict->calibration.
+
+## Cockpit V2 — Phase A (reference runtime + onboarding foundation)
+
+Nouveau package `apps/cockpit_v2/` : trois espaces separes (Reference Runtime / Guided Demo / Naive vs Governed), Reference Runtime par defaut. `reference_runtime_view.py` assemble `build_paper_cycle_engine` (F6, non modifie) avec `RealKX108Client` (F12), `ProofPolicy.REQUIRED` (F11), `NativeRosterAggregation` (reelle) et le roster calibre F13.1 pour AAPL. `reference_runtime_presenter.py` est une projection lecture seule (meme discipline que F9 : jamais d'affectation Authority.*).
+
+**Limite honnetement documentee** : aucune `StrategyPort`/`SizingPort` reelle n'existe dans ce repo (seulement des doubles de test) — le Reference Runtime observe/agrege/soumet au vrai Kernel mais ne produit pas de proposition dimensionnee reelle tant qu'une vraie strategie n'est pas branchee (phase future, non tentee ici, hors scope "ne pas inventer de composant metier manquant").
+
+Statut KX108 affiche jamais deduit de la seule construction de `RealKX108Client` — `REAL CLIENT CONFIGURED / NOT YET OBSERVED` jusqu'a un round-trip reellement execute, puis `REAL/CONNECTED` ou `REAL/UNAVAILABLE` selon le resultat observe.
+
+Cockpit F9 (`apps/cockpit/*.py`) et Naive vs Governed (`apps/naive_vs_governed/*.py`) : **zero modification**, reutilises tels quels via des wrappers fins.
+
+`native/agents/contracts.py::obsidia_log` : trace `[KERNEL_TRACE]` desormais OFF par defaut, opt-in via `OBSIDIA_TRACE=1` — seule modification hors `apps/cockpit_v2/`, autorisee explicitement.
+
+Onboarding : `pyproject.toml` minimal (namespace packages, `external/` inclus malgre l'absence de `__init__.py` — non ajoute, non restructure) + `scripts/{setup_windows,verify_install,run_cockpit}.ps1`.

@@ -1,10 +1,20 @@
 from dataclasses import dataclass, field, fields
 from typing import List, Dict, Any, Optional
 from enum import IntEnum, Enum
+import os
 import sys
 
 def obsidia_log(msg):
-    print(f"🔍 [KERNEL_TRACE] {msg}", file=sys.stderr)
+    """
+    Trace de diagnostic (accès dynamique de champ optionnel sur TradingState).
+
+    OFF par défaut (Cockpit V2 Phase A6) : purement diagnostique, aucun test
+    n'en dépend, produisait un bruit stderr répété à chaque cycle. Opt-in
+    explicite via `OBSIDIA_TRACE=1` — la capacité diagnostique n'est jamais
+    supprimée, seulement silencieuse par défaut.
+    """
+    if os.environ.get("OBSIDIA_TRACE") == "1":
+        print(f"🔍 [KERNEL_TRACE] {msg}", file=sys.stderr)
 
 class Layer(IntEnum):
     OBSERVATION = 1; INTERPRETATION = 2; CONTRADICTION = 3; PERIPHERAL = 4

@@ -53,7 +53,7 @@ Voir `docs/FREEZE_MANIFEST.md` pour le manifest actif, et `merkle_seal.json` (+ 
 
 ## Critical boundaries
 
-- **Aucun vrai Kernel X-108 n'est connecté dans ce repo.** Tout ce qui ressemble à un verdict KX108 ici provient d'un `FixtureKX108Client` explicitement **TEST-ONLY** (`tests/test_support/`) — le comportement de production par défaut est `UnavailableKX108Client`, **fail-closed** (`HOLD` sur indisponibilité ou réponse invalide, jamais `ACT` par défaut).
+- **Un vrai Kernel X-108 a été joint et observé (F12, `RealKX108Client`)** — un round-trip réel a été prouvé (voir `docs/F12_REAL_KERNEL_ROUND_TRIP.md`). Le comportement de production par défaut reste néanmoins `UnavailableKX108Client`, **fail-closed** (`HOLD` sur indisponibilité ou réponse invalide, jamais `ACT` par défaut), tant qu'aucune configuration explicite n'injecte `RealKX108Client`. Le Reference Runtime (`apps/cockpit_v2/`) est le seul chemin qui l'utilise, et requiert `ProofPolicy.REQUIRED` par construction (verrouillé, F12.1). Le service Kernel externe lui-même (`server.kernel.sealed.cjs`, hors de ce repo) doit être disponible pour qu'un cycle réel aboutisse — il n'est pas empaqueté dans OBSIDIA_TRADING. Le Cockpit F9 (`apps/cockpit/`) reste une démo à `FixtureKX108Client` explicitement **TEST-ONLY** (`tests/test_support/`).
 - **LIVE trading est structurellement interdit.** `require_paper_mode()` refuse toute tentative de passage en mode live avant même la construction d'un client réseau.
 - **Simulation ≠ Authority.** Une simulation produit une preuve/evidence, jamais un verdict.
 - **Receipt ≠ Decision.** Persister un receipt ne peut jamais changer rétroactivement la décision qu'il documente.
@@ -63,8 +63,17 @@ Voir `docs/B15_STRUCTURAL_SCORE_BOUNDARY.md` pour la limite spécifique sur la f
 
 ## Installation
 
+**Windows, sans PYTHONPATH manuel** :
+```powershell
+.\scripts\setup_windows.ps1
+.\scripts\verify_install.ps1
+.\scripts\run_cockpit.ps1
+```
+
+Manuel (toute plateforme) :
 ```bash
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ## Tests
@@ -73,15 +82,16 @@ pip install -r requirements.txt
 pytest tests/ -q
 ```
 
-Attendu : `188 passed, 1 skipped`.
+Baseline v0.3.2 : `284 passed, 1 skipped`.
 
 ## Cockpit
 
 ```bash
-streamlit run apps/cockpit/app.py
+streamlit run apps/cockpit_v2/app.py
 ```
+(ou `.\scripts\run_cockpit.ps1` après installation)
 
-Le Cockpit est une **projection observable** du runtime réel (CycleEngine, GovernanceBridge, ReceiptStore, ReplayEngine) — il ne recalcule jamais un verdict lui-même. Il affiche notamment un sélecteur pour la vue "Naive vs Governed".
+Cockpit V2 (`apps/cockpit_v2/`) sépare trois espaces : **Reference Runtime** (vrai `RealKX108Client`, PAPER, `ProofPolicy.REQUIRED` — vue par défaut), **Guided Demo** (Cockpit F9 historique, `FixtureKX108Client`, inchangé), **Naive vs Governed**. Le Cockpit ne recalcule jamais un verdict lui-même — projection lecture seule de ce que CycleEngine/GovernanceBridge/ReceiptStore/ReplayEngine ont réellement produit.
 
 ## Naive vs Governed
 
@@ -109,8 +119,8 @@ Démonstration pédagogique intégrée au Cockpit (`apps/naive_vs_governed/`) : 
 ## Known limitations
 
 Voir `docs/FREEZE_MANIFEST.md` (section `Dettes connues`) pour la liste exacte et à jour. Résumé :
-- Aucun vrai Kernel X-108 branché (fail-closed par construction)
-- Politique de preuve actuelle = `PROOF_BEST_EFFORT` (pas `PROOF_REQUIRED`)
+- Le Reference Runtime (Cockpit V2) n'a aucune `StrategyPort`/`SizingPort` métier réelle branchée — il observe et évalue via le vrai Kernel, mais ne produit pas encore de proposition dimensionnée réelle.
+- `ProofPolicy.BEST_EFFORT` reste le défaut rétrocompatible pour tout runtime qui n'utilise pas explicitement `RealKX108Client` — seul le Reference Runtime est verrouillé sur `REQUIRED` (F12.1).
 - Matrice de régimes de Markov **non calibrée** sur données réelles
 - Rendu visuel Streamlit non testé automatiquement (seule la couche données l'est)
 - Store de receipts du Cockpit temporaire par session
