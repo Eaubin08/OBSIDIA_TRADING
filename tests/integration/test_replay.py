@@ -286,9 +286,11 @@ def test_broker_failure_receipt_is_persisted_correctly(tmp_path):
     outcome = _make_engine(verdict="ACT", broker=broker, proof=store).run_cycle()
 
     stored = store.find_by_cycle_id(outcome.receipt.cycle_id)
-    assert stored.raw["execution_result"]["submitted"] is False
+    # Issue ambigue persistee telle quelle : ni succes, ni "non soumis" invente.
+    assert stored.raw["execution_result"]["status"] == "UNKNOWN"
     assert "echec de soumission" in stored.raw["execution_result"]["rejected_reason"]
-    assert stored.raw["touched_the_market"] is False
+    assert stored.raw["consequence"]["executed"] is False
+    assert stored.raw["consequence"]["ambiguous"] is True
 
 
 # ── 15. BLOCK/HOLD persiste meme sans execution ─────────────────────────────

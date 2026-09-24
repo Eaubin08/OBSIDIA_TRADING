@@ -64,6 +64,10 @@ from execution.binder.contracts import (
     SizingPort,
     StrategyPort,
 )
+from execution.binder.ambiguity_reconciler import (
+    DEFAULT_ABSENCE_GRACE_S,
+    reconcile_ambiguous_submissions,
+)
 from execution.binder.proof_policy import ProofOutcome, ProofPolicy
 
 logger = logging.getLogger("obsidia.runtime")
@@ -192,6 +196,7 @@ class CycleEngine:
         proof_policy: ProofPolicy = ProofPolicy.BEST_EFFORT,
         order_ledger: Optional[OrderLedgerPort] = None,
         advance_world: Optional[Any] = None,
+        ambiguity_absence_grace_s: float = DEFAULT_ABSENCE_GRACE_S,
     ) -> None:
         self.market_data = market_data
         self.broker = broker
@@ -208,6 +213,7 @@ class CycleEngine:
         self.proof = proof
         self.proof_policy = proof_policy
         self.order_ledger = order_ledger
+        self.ambiguity_absence_grace_s = ambiguity_absence_grace_s
         _reject_implicit_best_effort_with_real_kernel(authority, proof_policy)
         # Fait progresser le monde d'un pas avant l'observation. Separer
         # « le monde avance » de « on l'observe » evite que lire un etat
@@ -535,6 +541,17 @@ class CycleEngine:
                 return result
 
         if self.order_ledger is not None:
+            # Reprise par reconciliation : un ordre ambigu du meme symbole est
+            # d'abord relu chez le broker. S'il reste ambigu, le blocker
+            # ci-dessous refuse la nouvelle soumission.
+            for message in reconcile_ambiguous_submissions(
+                self.order_ledger,
+                self.broker,
+                symbol=plan.symbol,
+                now=self.clock.now(),
+                absence_grace_s=self.ambiguity_absence_grace_s,
+            ):
+                note(message)
             blocker = self.order_ledger.submission_blocker(plan)
             if blocker:
                 reason = f"garde idempotence: {blocker}"
@@ -563,14 +580,22 @@ class CycleEngine:
             result = ExecutionResult.not_submitted(plan, str(exc))
             self._record_ledger_result(cycle_id, result, note)
             return result
+        # Au-dela de ce point la requete a pu atteindre le broker : un echec
+        # n'est plus une preuve d'absence d'ordre. Le resultat est AMBIGU
+        # (jamais "non soumis"), le symbole reste bloque jusqu'a
+        # reconciliation par client_order_id.
         except BrokerUnavailable as exc:
-            note(f"broker unavailable a la soumission : {exc}")
-            result = ExecutionResult.not_submitted(plan, f"broker indisponible: {exc}")
+            note(f"broker unavailable a la soumission, issue inconnue : {exc}")
+            result = ExecutionResult.ambiguous(
+                plan, f"soumission ambigue, broker indisponible: {exc}"
+            )
             self._record_ledger_result(cycle_id, result, note)
             return result
         except Exception as exc:  # noqa: BLE001
             logger.exception("echec de soumission")
-            result = ExecutionResult.not_submitted(plan, f"echec de soumission: {exc}")
+            result = ExecutionResult.ambiguous(
+                plan, f"soumission ambigue, echec de soumission: {exc}"
+            )
             self._record_ledger_result(cycle_id, result, note)
             return result
 
@@ -701,8 +726,9 @@ class CycleEngine:
         """Ce qui est effectivement arrive, tel qu'on peut le constater."""
         if execution is None:
             return {"executed": False, "reason": "aucune execution pour ce cycle"}
-        return {
-            "executed": execution.submitted,
+        consequence = {
+            # Une soumission ambigue n'est pas une execution constatee.
+            "executed": execution.submitted and not execution.is_ambiguous,
             "status": execution.status.value,
             "broker_order_id": execution.broker_order_id,
             "filled_quantity": execution.filled_quantity,
@@ -710,6 +736,10 @@ class CycleEngine:
             "is_partial": execution.is_partial,
             "rejected_reason": execution.rejected_reason,
         }
+        if execution.is_ambiguous:
+            # Cle additive, absente des receipts non ambigus (format inchange).
+            consequence["ambiguous"] = True
+        return consequence
 
     def _abstain(self, cycle_id: str, reason: str) -> Decision:
         """Decision d'abstention quand le cycle ne peut rien proposer."""

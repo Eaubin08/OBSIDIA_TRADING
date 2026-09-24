@@ -35,7 +35,7 @@ from domain.portfolio import AccountState, PortfolioState
 from domain.proposal import AgentOutput, Consensus, SizingDecision, StrategyCandidate
 from domain.receipt import Decision, GENESIS_HASH
 from domain.provenance import SourceSystem
-from domain.types import ActionKind, AssetClass, Authority, DataQuality, Mode, OrderType, Provenance, Side
+from domain.types import ActionKind, AssetClass, Authority, DataQuality, Mode, OrderStatus, OrderType, Provenance, Side
 from execution.binder.engine import CycleEngine
 from execution.binder.order_ledger_jsonl import JsonlOrderLedger
 from execution.binder.paper_execution import require_paper_mode
@@ -410,12 +410,15 @@ def test_scenario_5_broker_error_produces_explicit_failure_never_false_success(t
 
     assert len(broker.submit_calls) == 1  # la tentative a bien eu lieu
     assert outcome.execution is not None
-    assert outcome.execution.submitted is False
-    assert outcome.touched_the_market is False
+    # Une erreur APRES envoi (ici un 500) ne prouve pas l'absence d'ordre :
+    # l'issue est AMBIGUE, jamais un succes, jamais un "non soumis" invente.
+    assert outcome.execution.is_ambiguous is True
+    assert outcome.touched_the_market is True
     assert "echec de soumission" in (outcome.execution.rejected_reason or "")
 
     receipt_dict = outcome.receipt.as_dict()
     assert receipt_dict["consequence"]["executed"] is False
+    assert receipt_dict["consequence"]["ambiguous"] is True
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -612,7 +615,10 @@ def test_no_category_ever_grants_itself_authority_beyond_its_role(tmp_path):
     engine_failing = _make_engine(verdict="ACT", broker=broker_failing, store=store, analysis=_single_fake_analysis())
     outcome_failing = engine_failing.run_cycle()
     assert outcome_failing.plan is not None  # le Binder AVAIT autorise le plan...
-    assert outcome_failing.execution.submitted is False  # ...mais l'execution a echoue
+    # ...mais l'execution n'est PAS constatee : l'issue broker est ambigue
+    # (une erreur apres envoi ne prouve pas l'absence d'ordre).
+    assert outcome_failing.execution.is_ambiguous is True
+    assert outcome_failing.execution.status is OrderStatus.UNKNOWN
 
     # Receipt != Decision, Proof != Authority : persister ne change jamais la decision deja prise.
     authority_before = outcome_failing.decision.authority

@@ -13,6 +13,20 @@ from market.adapters.alpaca.alpaca_config import AlpacaConfig
 class AlpacaAPIError(RuntimeError):
     """Erreur explicite retournee par Alpaca ou par le transport."""
 
+    def __init__(self, message: str, *, status_code: Optional[int] = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+    @property
+    def is_definitive_refusal(self) -> bool:
+        """
+        Vrai seulement si Alpaca a repondu et refuse explicitement la requete
+        (4xx hors 408). Timeout, transport coupe, 5xx ou reponse illisible
+        laissent l'effet inconnu : pour une ecriture (ordre, annulation), ce
+        n'est jamais une preuve que rien n'a ete fait.
+        """
+        return self.status_code is not None and 400 <= self.status_code < 500 and self.status_code != 408
+
 
 class AlpacaHTTPClient:
     """
@@ -79,7 +93,7 @@ class AlpacaHTTPClient:
             raise AlpacaAPIError("reponse Alpaca invalide: status_code absent")
         if status >= 400:
             reason = _safe_error_text(response)
-            raise AlpacaAPIError(f"Alpaca HTTP {status}: {reason}")
+            raise AlpacaAPIError(f"Alpaca HTTP {status}: {reason}", status_code=status)
 
         try:
             return response.json()

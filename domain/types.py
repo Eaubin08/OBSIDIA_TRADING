@@ -125,6 +125,9 @@ class OrderStatus(str, Enum):
     PENDING_SUBMIT = "PENDING_SUBMIT"
     ACCEPTED = "ACCEPTED"
     PARTIALLY_FILLED = "PARTIALLY_FILLED"
+    # Annulation demandee mais pas encore confirmee par le broker : des fills
+    # tardifs restent possibles, l'ordre n'est donc PAS terminal.
+    PENDING_CANCEL = "PENDING_CANCEL"
     FILLED = "FILLED"
     CANCELED = "CANCELED"
     REJECTED = "REJECTED"
@@ -146,6 +149,7 @@ class OrderStatus(str, Enum):
             OrderStatus.PENDING_SUBMIT,
             OrderStatus.ACCEPTED,
             OrderStatus.PARTIALLY_FILLED,
+            OrderStatus.PENDING_CANCEL,
         )
 
 

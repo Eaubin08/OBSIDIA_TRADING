@@ -217,12 +217,15 @@ def test_act_broker_failure_is_durably_proven_never_false_success(tmp_path):
     )
     outcome = engine.run_cycle()
 
-    assert outcome.execution.submitted is False
-    assert outcome.touched_the_market is False
-    assert outcome.proof_outcome is ProofOutcome.PROVEN  # l'echec lui-meme est prouve
+    # Une erreur APRES envoi (ici un 500) ne prouve pas l'absence d'ordre :
+    # l'issue est AMBIGUE, jamais un succes, jamais un "non soumis" invente.
+    assert outcome.execution.is_ambiguous is True
+    assert outcome.touched_the_market is True
+    assert outcome.proof_outcome is ProofOutcome.PROVEN  # l'ambiguite elle-meme est prouvee
     stored = store.read(outcome.decision.decision_id)
     assert stored is not None
-    assert stored.raw["execution_result"]["submitted"] is False
+    assert stored.raw["execution_result"]["status"] == "UNKNOWN"
+    assert stored.raw["consequence"]["executed"] is False
 
 
 # ── 7. ACT + broker succes + preuve finale ECHOUE -> jamais un succes normal ─

@@ -287,8 +287,10 @@ def test_alpaca_submission_error_produces_explicit_failure_never_false_success()
 
     assert len(broker.submit_calls) == 1  # la tentative a bien eu lieu
     assert outcome.execution is not None
-    assert outcome.execution.submitted is False
-    assert outcome.touched_the_market is False
+    # Une erreur APRES envoi (ici un 500) ne prouve pas l'absence d'ordre :
+    # l'issue est AMBIGUE, jamais un succes, jamais un "non soumis" invente.
+    assert outcome.execution.is_ambiguous is True
+    assert outcome.touched_the_market is True
     assert "echec de soumission" in (outcome.execution.rejected_reason or "")
 
 
