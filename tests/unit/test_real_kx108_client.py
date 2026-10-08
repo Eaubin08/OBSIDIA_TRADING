@@ -87,12 +87,34 @@ def test_normalizes_x108_gate_field_to_verdict(raw_authority, expected):
     assert result["verdict"] == expected
 
 
-def test_existing_verdict_key_is_never_overwritten():
+def test_conflicting_legacy_verdict_never_overrides_canonical_x108_gate():
     with patch("requests.post", side_effect=_fake_post(json_body={"verdict": "ACT", "x108_gate": "BLOCK"})):
         client = RealKX108Client()
         result = client.evaluate_trading(IR_PAYLOAD)
 
-    assert result["verdict"] == "ACT"  # le champ deja present prime, jamais ecrase
+    # Previously ACT was accepted despite a canonical BLOCK. Fail closed.
+    assert "verdict" not in result
+    assert result["contract_error"] == "CONFLICTING_OR_INVALID_KERNEL_AUTHORITY"
+
+
+@pytest.mark.parametrize("body,valid", [
+    ({"verdict": "HOLD"}, "HOLD"),
+    ({"x108_gate": "ACT", "verdict": "ACT"}, "ACT"),
+    ({"x108_gate": "BLOCK", "verdict": "BLOCK"}, "BLOCK"),
+    ({"x108_gate": "ACT", "verdict": "HOLD"}, None),
+    ({"x108_gate": "garbage", "verdict": "ACT"}, None),
+    ({"x108_gate": 1, "verdict": "ACT"}, None),
+    ({"verdict": "UNKNOWN"}, None),
+    ({"source": "FIXTURE_KX108", "x108_gate": "HOLD"}, "HOLD"),
+])
+def test_real_kernel_transport_authority_fields_fail_closed(body, valid):
+    with patch("requests.post", side_effect=_fake_post(json_body=body)):
+        result = RealKX108Client().evaluate_trading(IR_PAYLOAD)
+    if valid is None:
+        assert "verdict" not in result
+    else:
+        assert result["verdict"] == valid
+    assert result["source"] == "KX108_REAL"
 
 
 def test_unknown_x108_gate_value_is_not_invented_as_verdict():
