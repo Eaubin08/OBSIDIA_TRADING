@@ -111,7 +111,11 @@ def test_c41_proof_unavailable_blocks_fixture_act_before_any_paper_order():
     outcome = engine.run_cycle()
     assert broker.submit_calls == []
     assert not outcome.touched_the_market
-    assert outcome.proof_outcome is ProofOutcome.PRE_EXECUTION_PROOF_FAILURE
+    assert outcome.execution is not None
+    assert outcome.execution.submitted is False
+    assert "PROOF_REQUIRED" in (outcome.execution.rejected_reason or "")
+    # A failed final write cannot report a complete proof after abstention.
+    assert outcome.proof_outcome is ProofOutcome.ABSTENTION_PROOF_INCOMPLETE
 
 
 def test_c41_paper_mode_is_immutable_for_this_assembly():
