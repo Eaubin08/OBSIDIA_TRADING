@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Optional, Sequence, Union
 
-from domain.order_ledger import OrderLedgerEvent
+from domain.order_ledger import AMBIGUOUS_SCOPE_EVENTS, OrderLedgerEvent
 from domain.orders import ExecutionPlan
 
 
@@ -70,6 +70,19 @@ class JsonlOrderLedger:
                 f"execution_plan_id {plan.causal_id} deja enregistre "
                 f"comme {latest_plan.event_type.value}"
             )
+        # Garde de scope : une nouvelle decision (donc un nouveau
+        # client_order_id) ne doit pas contourner un ordre dont l'effet broker
+        # sur le meme symbole est encore inconnu — sinon double exposition.
+        for pending in self.non_terminal():
+            if (
+                pending.symbol == plan.symbol
+                and pending.event_type in AMBIGUOUS_SCOPE_EVENTS
+            ):
+                return (
+                    f"symbole {plan.symbol} en reconciliation : ordre "
+                    f"{pending.client_order_id or pending.ledger_id} encore "
+                    f"{pending.event_type.value}"
+                )
         return None
 
     def verify_integrity(self) -> tuple[bool, Optional[str]]:

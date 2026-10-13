@@ -19,9 +19,13 @@ class OrderLedgerEventType(str, Enum):
     SUBMITTED = "SUBMITTED"
     ACKNOWLEDGED = "ACKNOWLEDGED"
     PARTIAL = "PARTIAL"
+    CANCEL_PENDING = "CANCEL_PENDING"
     FILLED = "FILLED"
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
+    # Le plan n'a jamais atteint le broker (refus en amont, ou absence
+    # confirmee par reconciliation apres une soumission ambigue).
+    NOT_SUBMITTED = "NOT_SUBMITTED"
     UNKNOWN = "UNKNOWN"
     RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
     RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED"
@@ -32,6 +36,7 @@ ACTIVE_LEDGER_EVENTS = {
     OrderLedgerEventType.SUBMITTED,
     OrderLedgerEventType.ACKNOWLEDGED,
     OrderLedgerEventType.PARTIAL,
+    OrderLedgerEventType.CANCEL_PENDING,
     OrderLedgerEventType.UNKNOWN,
     OrderLedgerEventType.RECOVERY_REQUIRED,
     OrderLedgerEventType.RECONCILIATION_REQUIRED,
@@ -41,6 +46,21 @@ TERMINAL_LEDGER_EVENTS = {
     OrderLedgerEventType.FILLED,
     OrderLedgerEventType.REJECTED,
     OrderLedgerEventType.CANCELLED,
+    OrderLedgerEventType.NOT_SUBMITTED,
+}
+
+# Etats ou l'effet broker d'un ordre du symbole n'est pas etabli : une
+# intention enregistree sans resultat (crash entre les deux), une soumission
+# ambigue, une annulation non confirmee. Tant qu'un de ces etats subsiste,
+# aucune NOUVELLE soumission n'est permise sur le meme symbole : la reprise
+# commence par la reconciliation, jamais par un nouvel ordre.
+AMBIGUOUS_SCOPE_EVENTS = {
+    OrderLedgerEventType.SUBMISSION_INTENT_RECORDED,
+    OrderLedgerEventType.SUBMITTED,
+    OrderLedgerEventType.CANCEL_PENDING,
+    OrderLedgerEventType.UNKNOWN,
+    OrderLedgerEventType.RECOVERY_REQUIRED,
+    OrderLedgerEventType.RECONCILIATION_REQUIRED,
 }
 
 
@@ -168,6 +188,35 @@ class OrderLedgerEvent:
         )
 
     @classmethod
+    def from_reconciliation(
+        cls,
+        *,
+        prior: "OrderLedgerEvent",
+        event_type: OrderLedgerEventType,
+        timestamp: float,
+        external_order_id: Optional[str],
+        status: str,
+        payload: Dict[str, Any],
+    ) -> "OrderLedgerEvent":
+        """Nouvel etat d'un ordre deja enregistre, etabli par observation broker."""
+        return cls(
+            ledger_id=prior.ledger_id,
+            event_id=_event_id(prior.ledger_id, event_type, timestamp),
+            event_type=event_type,
+            timestamp=timestamp,
+            cycle_id=prior.cycle_id,
+            decision_id=prior.decision_id,
+            execution_plan_id=prior.execution_plan_id,
+            client_order_id=prior.client_order_id,
+            external_order_id=external_order_id or prior.external_order_id,
+            symbol=prior.symbol,
+            status=status,
+            mode=prior.mode,
+            provider=prior.provider,
+            payload=dict(payload),
+        )
+
+    @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "OrderLedgerEvent":
         expected = payload.get("integrity_hash")
         event = cls(
@@ -201,11 +250,16 @@ def event_type_from_order_status(
     if not submitted:
         if status is OrderStatus.REJECTED:
             return OrderLedgerEventType.REJECTED
+        if status is OrderStatus.PENDING_SUBMIT:
+            # ExecutionResult.not_submitted : le broker n'a jamais ete contacte.
+            return OrderLedgerEventType.NOT_SUBMITTED
         return OrderLedgerEventType.UNKNOWN
     if status is OrderStatus.ACCEPTED:
         return OrderLedgerEventType.ACKNOWLEDGED
     if status is OrderStatus.PARTIALLY_FILLED:
         return OrderLedgerEventType.PARTIAL
+    if status is OrderStatus.PENDING_CANCEL:
+        return OrderLedgerEventType.CANCEL_PENDING
     if status is OrderStatus.FILLED:
         return OrderLedgerEventType.FILLED
     if status is OrderStatus.CANCELED:

@@ -93,19 +93,20 @@ class AlpacaBroker:
         return self._order_from(data)
 
     def order_by_client_order_id(self, client_order_id: str) -> Optional[Order]:
+        # Lookup direct et unique : l'ancien balayage des 500 derniers ordres
+        # pouvait conclure "absent" pour un ordre simplement plus ancien.
         try:
             data = self.client.trading_get(
-                "/v2/orders",
-                params={"status": "all", "nested": "false", "limit": 500},
+                "/v2/orders:by_client_order_id",
+                params={"client_order_id": client_order_id},
             )
         except AlpacaAPIError as exc:
+            if exc.status_code == 404:
+                return None
             raise broker_unavailable(exc) from exc
-        if not isinstance(data, list):
-            raise BrokerUnavailable("historique d'ordres Alpaca invalide")
-        for item in data:
-            if str(item.get("client_order_id") or "") == client_order_id:
-                return self._order_from(item)
-        return None
+        if not isinstance(data, dict):
+            raise BrokerUnavailable("reponse Alpaca invalide pour by_client_order_id")
+        return self._order_from(data)
 
     def submit(self, plan: ExecutionPlan) -> ExecutionResult:
         self._require_authority(plan)
@@ -113,12 +114,36 @@ class AlpacaBroker:
         try:
             data = self.client.trading_post("/v2/orders", json_body=payload)
         except AlpacaAPIError as exc:
-            return ExecutionResult(
-                plan=plan,
-                submitted=False,
-                status=OrderStatus.REJECTED,
-                rejected_reason=str(exc),
+            if exc.is_definitive_refusal:
+                return ExecutionResult(
+                    plan=plan,
+                    submitted=False,
+                    status=OrderStatus.REJECTED,
+                    rejected_reason=str(exc),
+                )
+            return self._resolve_ambiguous_submit(plan, exc)
+        return self._execution_from(plan, data, submitted=True)
+
+    def _resolve_ambiguous_submit(
+        self, plan: ExecutionPlan, exc: AlpacaAPIError
+    ) -> ExecutionResult:
+        """
+        Timeout / transport / 5xx : l'ordre a pu etre cree. Une relecture
+        immediate par client_order_id peut lever le doute ; sinon le resultat
+        reste AMBIGU. Un "introuvable" immediat ne prouve pas l'absence.
+        """
+        reason = f"soumission ambigue: {exc}"
+        if not plan.client_order_id:
+            return ExecutionResult.ambiguous(plan, reason)
+        try:
+            data = self.client.trading_get(
+                "/v2/orders:by_client_order_id",
+                params={"client_order_id": plan.client_order_id},
             )
+        except AlpacaAPIError:
+            return ExecutionResult.ambiguous(plan, reason)
+        if not isinstance(data, dict):
+            return ExecutionResult.ambiguous(plan, reason)
         return self._execution_from(plan, data, submitted=True)
 
     def cancel(self, plan: ExecutionPlan, broker_order_id: str) -> ExecutionResult:
@@ -126,11 +151,15 @@ class AlpacaBroker:
         try:
             self.client.trading_delete(f"/v2/orders/{broker_order_id}")
         except AlpacaAPIError as exc:
-            return ExecutionResult.not_submitted(plan, str(exc))
+            if exc.is_definitive_refusal:
+                return ExecutionResult.not_submitted(plan, str(exc))
+            return ExecutionResult.ambiguous(plan, f"annulation ambigue: {exc}")
+        # Alpaca accepte la DEMANDE d'annulation : ce n'est pas une annulation
+        # confirmee, des fills tardifs restent possibles.
         return ExecutionResult(
             plan=plan,
             submitted=True,
-            status=OrderStatus.CANCELED,
+            status=OrderStatus.PENDING_CANCEL,
             broker_order_id=broker_order_id,
             submitted_at=self.clock.now(),
         )
@@ -147,7 +176,9 @@ class AlpacaBroker:
                 json_body={"qty": str(plan.quantity)},
             )
         except AlpacaAPIError as exc:
-            return ExecutionResult.not_submitted(plan, str(exc))
+            if exc.is_definitive_refusal:
+                return ExecutionResult.not_submitted(plan, str(exc))
+            return ExecutionResult.ambiguous(plan, f"cloture ambigue: {exc}")
         return self._execution_from(plan, data, submitted=True)
 
     def _require_authority(self, plan: ExecutionPlan) -> None:
@@ -284,7 +315,10 @@ def _status(value: Any) -> OrderStatus:
         return OrderStatus.PARTIALLY_FILLED
     if raw in ("filled", "done_for_day"):
         return OrderStatus.FILLED
-    if raw in ("canceled", "cancelled", "pending_cancel"):
+    if raw in ("pending_cancel",):
+        # Annulation demandee, non confirmee : des fills tardifs restent possibles.
+        return OrderStatus.PENDING_CANCEL
+    if raw in ("canceled", "cancelled"):
         return OrderStatus.CANCELED
     if raw in ("rejected", "stopped", "suspended", "calculated"):
         return OrderStatus.REJECTED

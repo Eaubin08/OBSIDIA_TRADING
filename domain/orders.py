@@ -214,6 +214,16 @@ class ExecutionResult:
         """Vrai des lors qu'un ordre a quitte le systeme vers le broker."""
         return self.submitted
 
+    @property
+    def is_ambiguous(self) -> bool:
+        """
+        La requete a quitte le systeme mais l'effet broker n'est pas connu
+        (timeout, transport coupe, 5xx, reponse illisible). Ce n'est ni un
+        fill ni une preuve d'absence d'ordre : seule une reconciliation
+        (lookup par client_order_id) peut trancher.
+        """
+        return self.submitted and self.status is OrderStatus.UNKNOWN
+
     def as_dict(self) -> dict:
         return {
             "plan": self.plan.as_dict(),
@@ -247,5 +257,19 @@ class ExecutionResult:
             plan=plan,
             submitted=False,
             status=OrderStatus.PENDING_SUBMIT,
+            rejected_reason=reason,
+        )
+
+    @classmethod
+    def ambiguous(cls, plan: ExecutionPlan, reason: str) -> "ExecutionResult":
+        """
+        Constructeur explicite pour une soumission dont l'issue broker est
+        inconnue. `submitted=True` car la requete a pu atteindre le broker ;
+        `status=UNKNOWN` car rien ne prouve ni l'ordre ni son absence.
+        """
+        return cls(
+            plan=plan,
+            submitted=True,
+            status=OrderStatus.UNKNOWN,
             rejected_reason=reason,
         )

@@ -169,8 +169,10 @@ def test_cockpit_broker_failure_is_never_shown_as_success(tmp_path):
     view = build_cockpit_view(outcome, store)
 
     assert view["execution"]["attempted"] is True
-    assert view["execution"]["result"]["submitted"] is False
+    # Issue broker ambigue : affichee UNKNOWN, jamais comme un succes.
+    assert view["execution"]["result"]["status"] == "UNKNOWN"
     assert view["receipt"]["raw"]["consequence"]["executed"] is False
+    assert view["receipt"]["raw"]["consequence"]["ambiguous"] is True
 
 
 # ── Tests complementaires : les 8 scenarios s'executent tous reellement ─────

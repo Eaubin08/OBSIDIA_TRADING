@@ -25,7 +25,11 @@ class LiquidityAgent(BaseAgent):
     agent_id = "LiquidityAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
         avg_vol = sum(state.volumes[-20:]) / max(1, min(len(state.volumes),20))
-        spread = state.spreads_bps[-1] if state.spreads_bps else 0.0
+        spread = state.spreads_bps[-1] if state.spreads_bps else None
+        # P1-A : un spread inconnu n'est jamais lu comme "serre" (favorable).
+        # UNKNOWN != ZERO.
+        if spread is None:
+            return AgentVote(self.agent_id, Domain.TRADING, Layer.OBSERVATION, f"spread inconnu, avg_vol={avg_vol:.2f}", 0.3, Severity.S1, proposed_verdict="HOLD", unknowns=["MISSING_SPREAD"])
         liquid = avg_vol > 0 and state.volumes[-1] >= avg_vol and spread < 12
         verdict = "BUY" if liquid else "SELL" if spread > 25 else "HOLD"
         return AgentVote(self.agent_id, Domain.TRADING, Layer.OBSERVATION, f"spread_bps={spread:.2f}, avg_vol={avg_vol:.2f}", 0.7 if liquid else 0.5, Severity.S1, proposed_verdict=verdict)
@@ -44,7 +48,12 @@ class VolatilityAgent(BaseAgent):
 class MacroAgent(BaseAgent):
     agent_id = "MacroAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
-        risk = state.event_risk_scores[-1] if state.event_risk_scores else 0.5
+        # P1-A : aucun fournisseur macro/event reel n'existe dans le repo.
+        # Le neutre 0.5 (confiance 0.0, verdict HOLD) etait deja honnete
+        # numeriquement ; on ajoute l'unknown explicite pour l'auditabilite.
+        if not state.event_risk_scores:
+            return AgentVote(self.agent_id, Domain.TRADING, Layer.OBSERVATION, "event_risk inconnu", 0.0, Severity.S1, proposed_verdict="HOLD", unknowns=["MISSING_EVENT_RISK"])
+        risk = state.event_risk_scores[-1]
         verdict = "SELL" if risk > 0.7 else "BUY" if risk < 0.3 else "HOLD"
         return AgentVote(self.agent_id, Domain.TRADING, Layer.OBSERVATION, f"event_risk={risk:.2f}", min(1.0, abs(risk-0.5)*2), Severity.S2 if risk > 0.7 else Severity.S1, proposed_verdict=verdict)
 
@@ -52,6 +61,12 @@ class MacroAgent(BaseAgent):
 class CorrelationAgent(BaseAgent):
     agent_id = "CorrelationAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
+        # P1-A : aucune reference BTC reelle n'existe -- deja neutre
+        # numeriquement (verdict HOLD garanti si btc_reference_prices est
+        # vide), unknown ajoute pour l'auditabilite.
+        if not state.btc_reference_prices:
+            asset_ret = _ret(state.prices, 5)
+            return AgentVote(self.agent_id, Domain.TRADING, Layer.OBSERVATION, f"asset_ret={asset_ret:.4f}, ref inconnue", 0.0, Severity.S1, proposed_verdict="HOLD", unknowns=["MISSING_BTC_REFERENCE"])
         asset_ret = _ret(state.prices, 5)
         ref_ret = _ret(state.btc_reference_prices, 5)
         verdict = "BUY" if asset_ret > 0 and ref_ret > 0 else "SELL" if asset_ret < 0 and ref_ret < 0 else "HOLD"
@@ -62,7 +77,12 @@ class CorrelationAgent(BaseAgent):
 class EventAgent(BaseAgent):
     agent_id = "EventAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
-        risk = state.event_risk_scores[-1] if state.event_risk_scores else 0.0
+        # P1-A : le defaut 0.0 tombait sous le seuil BUY (risk<0.25) --
+        # "pas de donnee event" se lisait comme "signal event haussier
+        # confirme". UNKNOWN != ZERO : HOLD explicite a la place.
+        if not state.event_risk_scores:
+            return AgentVote(self.agent_id, Domain.TRADING, Layer.OBSERVATION, "event_shock inconnu", 0.0, Severity.S1, proposed_verdict="HOLD", unknowns=["MISSING_EVENT_RISK"])
+        risk = state.event_risk_scores[-1]
         verdict = "SELL" if risk > 0.65 else "BUY" if risk < 0.25 else "HOLD"
         return AgentVote(self.agent_id, Domain.TRADING, Layer.OBSERVATION, f"event_shock={risk:.2f}", min(1.0, abs(risk-0.45)*1.8), Severity.S2 if risk > 0.65 else Severity.S1, proposed_verdict=verdict)
 
@@ -116,7 +136,11 @@ class PatternAgent(BaseAgent):
 class SentimentAgent(BaseAgent):
     agent_id = "SentimentAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
-        score = state.sentiment_scores[-1] if state.sentiment_scores else 0.0
+        # P1-A : aucune source de sentiment reelle n'existe -- deja neutre
+        # numeriquement (score 0.0 -> HOLD, confiance 0.0), unknown ajoute.
+        if not state.sentiment_scores:
+            return AgentVote(self.agent_id, Domain.TRADING, Layer.INTERPRETATION, "sentiment inconnu", 0.0, Severity.S1, proposed_verdict="HOLD", unknowns=["MISSING_SENTIMENT"])
+        score = state.sentiment_scores[-1]
         verdict = "BUY" if score > 0.2 else "SELL" if score < -0.2 else "HOLD"
         return AgentVote(self.agent_id, Domain.TRADING, Layer.INTERPRETATION, f"sentiment={score:.2f}", min(1.0, abs(score)), Severity.S1, proposed_verdict=verdict)
 
@@ -124,17 +148,41 @@ class SentimentAgent(BaseAgent):
 class PredictionAgent(BaseAgent):
     agent_id = "PredictionAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
+        # P1-A : rv20 reste calcule sur les vrais prix (inchange). risk/
+        # spread manquants ne sont plus substitues par 0.0 dans la formule
+        # (ce qui abaissait artificiellement le composite vers le seuil
+        # BUY<0.35) -- ils sont simplement omis du composite et signales.
         rv20 = realized_volatility(state.prices, 20) or 0.0
-        risk = state.event_risk_scores[-1] if state.event_risk_scores else 0.0
-        spread = state.spreads_bps[-1] if state.spreads_bps else 0.0
-        composite = min(1.0, rv20*10 + risk*0.7 + spread/100)
+        unknowns = []
+        composite = rv20 * 10
+        if state.event_risk_scores:
+            composite += state.event_risk_scores[-1] * 0.7
+        else:
+            unknowns.append("MISSING_EVENT_RISK")
+        if state.spreads_bps:
+            composite += state.spreads_bps[-1] / 100
+        else:
+            unknowns.append("MISSING_SPREAD")
+        composite = min(1.0, composite)
         verdict = "SELL" if composite > 0.70 else "BUY" if composite < 0.35 else "HOLD"
-        return AgentVote(self.agent_id, Domain.TRADING, Layer.INTERPRETATION, f"composite_risk={composite:.2f}", min(1.0, abs(composite-0.5)*2), Severity.S2 if composite > 0.70 else Severity.S1, proposed_verdict=verdict)
+        return AgentVote(self.agent_id, Domain.TRADING, Layer.INTERPRETATION, f"composite_risk={composite:.2f}", min(1.0, abs(composite-0.5)*2), Severity.S2 if composite > 0.70 else Severity.S1, proposed_verdict=verdict, unknowns=unknowns)
 
 
 class PortfolioAgent(BaseAgent):
     agent_id = "PortfolioAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
+        # P1-A : c'etait le cas le plus grave -- exposure/drawdown a 0.0
+        # (fallback dynamique) se lisait comme "portefeuille sans risque"
+        # et produisait un BUY fabrique (0.0<0.30 et 0.0<0.03). Un
+        # portefeuille reel non fourni doit produire HOLD + unknown, jamais
+        # une confiance directionnelle.
+        unknowns = []
+        if state.drawdown is None:
+            unknowns.append("MISSING_PORTFOLIO_STATE")
+        if state.exposure is None:
+            unknowns.append("EXPOSURE_SEMANTICS_UNRESOLVED")
+        if unknowns:
+            return AgentVote(self.agent_id, Domain.TRADING, Layer.INTERPRETATION, "portfolio state indisponible/semantique non resolue", 0.0, Severity.S1, proposed_verdict="HOLD", unknowns=unknowns)
         verdict = "SELL" if state.drawdown > 0.10 or state.exposure > 0.80 else "BUY" if state.exposure < 0.30 and state.drawdown < 0.03 else "HOLD"
         return AgentVote(self.agent_id, Domain.TRADING, Layer.INTERPRETATION, f"exposure={state.exposure:.2f}, drawdown={state.drawdown:.2f}", min(1.0, max(state.drawdown, state.exposure)), Severity.S2 if state.drawdown > 0.10 else Severity.S1, proposed_verdict=verdict)
 
@@ -142,7 +190,19 @@ class PortfolioAgent(BaseAgent):
 class ExecutionQualityAgent(BaseAgent):
     agent_id = "ExecutionQualityAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
-        cost_score = (state.spreads_bps[-1] if state.spreads_bps else 0.0) / 100 + state.slippage_bps / 100
+        # P1-A : spread/slippage inconnus tombaient a 0.0 -> cost_score=0.0
+        # -> BUY fabrique (0.0<0.08). Aucune mesure de cout d'execution
+        # connue doit produire HOLD + unknown, jamais "execution peu
+        # couteuse confirmee".
+        spread = state.spreads_bps[-1] if state.spreads_bps else None
+        unknowns = []
+        if spread is None:
+            unknowns.append("MISSING_SPREAD")
+        if state.slippage_bps is None:
+            unknowns.append("MISSING_SLIPPAGE")
+        if unknowns:
+            return AgentVote(self.agent_id, Domain.TRADING, Layer.CONTRADICTION, "cout d'execution inconnu", 0.0, Severity.S1, proposed_verdict="HOLD", unknowns=unknowns)
+        cost_score = spread / 100 + state.slippage_bps / 100
         verdict = "SELL" if cost_score > 0.25 else "BUY" if cost_score < 0.08 else "HOLD"
         return AgentVote(self.agent_id, Domain.TRADING, Layer.CONTRADICTION, f"execution_cost_score={cost_score:.3f}", min(1.0, cost_score*3), Severity.S2 if verdict=="SELL" else Severity.S1, proposed_verdict=verdict, risk_flags=["POOR_EXECUTION"] if verdict=="SELL" else [])
 
@@ -161,9 +221,23 @@ class RegimeShiftAgent(BaseAgent):
 class PortfolioStressAgent(BaseAgent):
     agent_id = "PortfolioStressAgent"
     def evaluate(self, state: TradingState) -> AgentVote:
-        stress = min(1.0, state.exposure * 0.8 + state.drawdown * 1.5 + max(0.0, state.order_book_imbalance) * 0.2)
+        # P1-A : exposure/drawdown inconnus a 0.0 produisaient un stress
+        # artificiellement bas (jamais SELL). order_book_imbalance seul
+        # manquant n'est pas bloquant (poids mineur 0.2, additif) mais reste
+        # signale ; exposure/drawdown manquants bloquent le calcul entier --
+        # le verdict ne peut jamais deviner un stress "faible" sans eux.
+        unknowns = []
+        if state.drawdown is None:
+            unknowns.append("MISSING_PORTFOLIO_STATE")
+        if state.exposure is None:
+            unknowns.append("EXPOSURE_SEMANTICS_UNRESOLVED")
+        if unknowns:
+            return AgentVote(self.agent_id, Domain.TRADING, Layer.CONTRADICTION, "stress portefeuille inconnu", 0.0, Severity.S1, proposed_verdict="HOLD", unknowns=unknowns)
+        imbalance_unknown = state.order_book_imbalance is None
+        imbalance = state.order_book_imbalance if not imbalance_unknown else 0.0
+        stress = min(1.0, state.exposure * 0.8 + state.drawdown * 1.5 + max(0.0, imbalance) * 0.2)
         verdict = "SELL" if stress > 0.7 else "HOLD"
-        return AgentVote(self.agent_id, Domain.TRADING, Layer.CONTRADICTION, f"portfolio_stress={stress:.2f}", stress, Severity.S3 if verdict=="SELL" else Severity.S1, proposed_verdict=verdict, risk_flags=["PORTFOLIO_STRESS"] if verdict=="SELL" else [])
+        return AgentVote(self.agent_id, Domain.TRADING, Layer.CONTRADICTION, f"portfolio_stress={stress:.2f}", stress, Severity.S3 if verdict=="SELL" else Severity.S1, proposed_verdict=verdict, risk_flags=["PORTFOLIO_STRESS"] if verdict=="SELL" else [], unknowns=["MISSING_ORDER_BOOK_IMBALANCE"] if imbalance_unknown else [])
 
 
 class ProofConsistencyAgent(BaseAgent):

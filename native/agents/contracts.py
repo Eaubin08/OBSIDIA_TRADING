@@ -482,6 +482,18 @@ class TradingState(UniversalBase):
     sentiment_scores: List[float] = field(default_factory=list)
     event_risk_scores: List[float] = field(default_factory=list)
     btc_reference_prices: List[float] = field(default_factory=list)
+    # P1-A (Native Input Integrity) : ces quatre champs etaient auparavant
+    # absents de la dataclass et retombaient sur le fallback dynamique
+    # `UniversalBase.__getattr__` -> `SmartAttribute` (defaut numerique 0.0).
+    # Un 0.0 fabrique se lit comme "aucune exposition/aucun drawdown connu"
+    # -- un signal FAVORABLE au trading -- alors que la verite est
+    # "cette donnee n'a jamais ete fournie". Explicites ici avec defaut
+    # `None`, ils permettent aux agents de distinguer "valeur reelle 0.0"
+    # de "valeur inconnue" (voir native/agents/domains/trading_agents.py).
+    drawdown: Optional[float] = None
+    exposure: Optional[float] = None
+    slippage_bps: Optional[float] = None
+    order_book_imbalance: Optional[float] = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -490,6 +502,13 @@ class TradingState(UniversalBase):
         if len(self.prices) > 0:
             for k, v in kwargs.items():
                 setattr(self, k, v)
+        # Toujours assigner explicitement (jamais laisser au fallback
+        # dynamique) : None si l'appelant ne fournit pas la valeur, ce qui
+        # est une absence honnete plutot qu'un zero invente.
+        self.drawdown = kwargs.get('drawdown', None)
+        self.exposure = kwargs.get('exposure', None)
+        self.slippage_bps = kwargs.get('slippage_bps', None)
+        self.order_book_imbalance = kwargs.get('order_book_imbalance', None)
 
     def __post_init__(self):
         obsidia_log(f"Trading Engine active: {getattr(self, 'symbol', 'UNKNOWN')}")
