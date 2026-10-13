@@ -1,0 +1,31 @@
+name: reconcile-v1-checks
+# Reconciliation-only workflow. Exists only on reconcile/** branches.
+# No broker or kernel credentials are provided: nothing can reach a real broker.
+on:
+  push:
+    branches: ["reconcile/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  python-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: C4.1 PAPER proof set (same files as the source workflow)
+        run: >-
+          python -m pytest
+          tests/integration/test_c41_v01_paper_proof_convergence_v0.py
+          tests/unit/test_real_kx108_client.py
+          tests/unit/test_reference_runtime_proof_policy.py
+          tests/integration/test_proof_required.py
+          -q
+      - name: Full test suite
+        if: always()
+        run: python -m pytest tests -q -rs
