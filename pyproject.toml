@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obsidia_trading"
+version = "0.3.2"
+description = "OBSIDIA_TRADING — Reference Implementation gouvernee (installation locale editable uniquement, non publiee)"
+requires-python = ">=3.10"
+
+# Ce fichier existe UNIQUEMENT pour permettre une installation editable
+# fiable (`pip install -e .`) et resoudre le probleme de PYTHONPATH manuel
+# (Cockpit V2 Phase A7/A8). Il ne restructure aucun package, ne deplace
+# aucun module, ne change aucune semantique runtime. requirements.txt reste
+# la source autoritative des dependances (pas de duplication ici).
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "domain*",
+    "native*",
+    "market*",
+    "simulation*",
+    "governance*",
+    "execution*",
+    "proof*",
+    "external*",
+    "apps*",
+]
+namespaces = true
