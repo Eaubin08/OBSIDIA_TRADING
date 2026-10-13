@@ -4,7 +4,7 @@ Branch: `reconcile/obsidia-trading-v1`
 Date: 2026-10-13
 Status: **ORGANIZATION_RECONCILED — RUNTIME_NOT_CERTIFIED**
 
-Organizational closure tag: `org-reconciled/obsidia-trading-v1-20261013`, placed on the commit that contains this register. It certifies the Git organization only. **It is not a runtime freeze and not a new seal.** The sealed reference of this repository remains `obsidia-trading-v0.3.2-reference` on `master`, with `merkle_seal.json` unchanged.
+Organizational closure tag: `org-reconciled/obsidia-trading-v1-20261013`, placed on commit `6965bff55fff27d510cd6f10116180127f17ed44`, the initial closure state. The tag was neither moved nor replaced. This version of the register is a later documentary correction (see §10). It certifies the Git organization only. **It is not a runtime freeze and not a new seal.** The sealed reference of this repository remains `obsidia-trading-v0.3.2-reference` on `master`, with `merkle_seal.json` unchanged.
 
 No source branch was modified. Nothing was deleted. Nothing was merged into `master`. No PR was opened, closed, modified or merged. No other repository was touched. No broker was contacted: CI ran without any credentials.
 
@@ -59,7 +59,8 @@ No other conflict appeared. `native/agents/contracts.py` was merged automaticall
 | SHA | Purpose |
 |---|---|
 | `36a60052c49b377f96857ceaa2d3282b560aceb3` | new file `.github/workflows/reconcile-v1-checks.yml` (push to `reconcile/**` only, Python 3.12, full history). The C4.1 workflow is unchanged |
-| (this commit) | adds this register |
+| `6965bff55fff27d510cd6f10116180127f17ed44` | adds this register (commit carrying the organizational closure tag) |
+| (this commit) | documentary correction of the register, posterior to the tag |
 
 ## 7. Tests
 
@@ -80,7 +81,7 @@ assert 93 == 104
 
 Cause, known: `merkle_seal.json` describes `obsidia-trading-v0.3.2-reference` (93 sealed files). The integrated branches add and modify files inside the sealed scope without regenerating the seal, so the scope now holds 104 files. **This is the gap between this branch and the historical seal, not a defect of the merge.** The seal was deliberately not regenerated: doing so would seal a state that has not been validated.
 
-The 22 skipped tests are the ones that need the real X-108 kernel (`node` / `server.kernel.sealed.cjs`, 12 tests), real Alpaca credentials (10 tests' own guard), or a legacy runtime outside scope (1 test); they skip by their own guards.
+The 22 skipped tests are the ones that need the real X-108 kernel (`node` / `server.kernel.sealed.cjs`, 11 tests), real Alpaca credentials (10 tests), or a legacy runtime outside scope (1 test); they skip by their own guards.
 
 Four of the five work branches had never run in GitHub CI before.
 
@@ -100,3 +101,9 @@ Four of the five work branches had never run in GitHub CI before.
 - The 6 pre-existing branches and the 8 pre-existing tags are at the same SHA as before.
 - PR #1 (open, draft, → `master`) is unchanged.
 - No force-push, rebase or squash.
+
+## 10. Corrections after closure
+
+| Date | Correction |
+|---|---|
+| 2026-10-13 | §7: the number of tests skipped for lack of the real kernel is **11**, not 12 as written in the register at commit `6965bff5` (11 kernel + 10 Alpaca credentials + 1 legacy runtime = 22 skipped; the total was already correct). Documentation only: no code, test, workflow or seal was changed. The tag `org-reconciled/obsidia-trading-v1-20261013` still points to `6965bff55fff27d510cd6f10116180127f17ed44`; this commit comes after it on the branch |
