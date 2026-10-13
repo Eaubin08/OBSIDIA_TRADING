@@ -72,6 +72,7 @@ def _make_snapshot(symbol: str = "BTC/USD") -> MarketSnapshot:
 def _external_signal(**overrides) -> ExternalSignal:
     defaults = dict(
         source_id="brother_strategy_07",
+        symbol="AAPL",
         category="trading",
         signal="BUY",
         confidence=0.7,
@@ -169,7 +170,11 @@ def test_external_normalization_unchanged_after_native_refactor():
     assert result.source_provenance.source_system.value == "external"
     assert result.source_provenance.source_id == "brother_strategy_07"
     assert result.source_provenance.adapter_id == "brother_stack_v1"
-    assert result.unknowns == ("liquidity_at_close",)
+    # F15 : le normalizer ajoute des unknowns de staleness/calibration
+    # supplementaires (observed_at absent -> UNKNOWN, pas de calibration
+    # externe fournie) — le unknown metier original doit rester present
+    # tel quel parmi eux, jamais remplace ni supprime.
+    assert "liquidity_at_close" in result.unknowns
     assert result.contradictions == ("momentum_vs_meanrev",)
     assert result.risk_flags == ("concentration",)
     assert result.evidence_refs == ("chart:1",)

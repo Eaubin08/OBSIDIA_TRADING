@@ -10,6 +10,7 @@ differente. Aucune deuxieme architecture metier, aucune autorite parallele.
 from __future__ import annotations
 
 import pathlib
+import time
 import warnings
 
 import pytest
@@ -46,6 +47,7 @@ def test_valid_external_signal_normalizes_with_external_provenance_preserved():
         {
             "source_id": "brother_strategy_07",
             "organization_id": "brother_company",
+            "symbol": "AAPL",
             "signal": "BUY",
             "confidence": 0.6,
             "rationale": "signal externe valide",
@@ -65,11 +67,11 @@ def test_valid_external_signal_normalizes_with_external_provenance_preserved():
 
 @pytest.mark.parametrize(
     "missing_field",
-    ["source_id", "organization_id", "signal", "confidence", "rationale"],
+    ["source_id", "organization_id", "symbol", "signal", "confidence", "rationale"],
 )
 def test_external_signal_with_missing_field_is_rejected_explicitly(missing_field):
     payload = {
-        "source_id": "x", "organization_id": "org", "signal": "BUY",
+        "source_id": "x", "organization_id": "org", "symbol": "AAPL", "signal": "BUY",
         "confidence": 0.5, "rationale": "test",
     }
     del payload[missing_field]
@@ -79,8 +81,26 @@ def test_external_signal_with_missing_field_is_rejected_explicitly(missing_field
 
 def test_external_signal_with_non_numeric_confidence_is_rejected():
     payload = {
-        "source_id": "x", "organization_id": "org", "signal": "BUY",
+        "source_id": "x", "organization_id": "org", "symbol": "AAPL", "signal": "BUY",
         "confidence": "not-a-number", "rationale": "test",
+    }
+    with pytest.raises(InvalidExternalSignal):
+        ExternalSignal.from_raw_payload(payload)
+
+
+def test_external_signal_with_symbol_mismatch_is_rejected():
+    payload = {
+        "source_id": "x", "organization_id": "org", "symbol": "AAPL", "signal": "BUY",
+        "confidence": 0.5, "rationale": "test",
+    }
+    with pytest.raises(InvalidExternalSignal):
+        ExternalSignal.from_raw_payload(payload, expected_symbol="MSFT")
+
+
+def test_external_signal_with_malformed_risk_flags_is_rejected():
+    payload = {
+        "source_id": "x", "organization_id": "org", "symbol": "AAPL", "signal": "BUY",
+        "confidence": 0.5, "rationale": "test", "risk_flags": "not-a-list",
     }
     with pytest.raises(InvalidExternalSignal):
         ExternalSignal.from_raw_payload(payload)
@@ -102,6 +122,7 @@ def test_normalized_external_signal_produces_decision_via_same_bridge_as_native(
     external_signal = ExternalSignal.from_raw_payload(
         {
             "source_id": "brother_strategy_07", "organization_id": "brother_company",
+            "symbol": "AAPL",
             "signal": "BUY", "confidence": 0.9, "rationale": "meme confiance que le natif",
         }
     )
@@ -167,14 +188,18 @@ def test_normalizer_and_adapters_never_import_governance_bridge():
 def test_unknowns_contradictions_risk_flags_survive_normalization():
     signal = ExternalSignal.from_raw_payload(
         {
-            "source_id": "ext-1", "organization_id": "org", "signal": "SELL", "confidence": 0.4,
+            "source_id": "ext-1", "organization_id": "org", "symbol": "AAPL",
+            "signal": "SELL", "confidence": 0.4, "observed_at": time.time(),
             "rationale": "test", "unknowns": ("no_orderbook",), "contradictions": ("trend_conflict",),
             "risk_flags": ("thin_liquidity",), "evidence_refs": ("ref-1",),
         }
     )
     output = normalize_external_signal(signal, adapter_id="adapter-x")
 
-    assert output.unknowns == ("no_orderbook",)
+    # F15 : la staleness FRESH/UNKNOWN et l'absence de calibration externe
+    # sont ajoutees comme unknowns supplementaires — le unknown metier
+    # original doit rester present tel quel parmi eux, jamais remplace.
+    assert "no_orderbook" in output.unknowns
     assert output.contradictions == ("trend_conflict",)
     assert output.risk_flags == ("thin_liquidity",)
     assert output.evidence_refs == ("ref-1",)

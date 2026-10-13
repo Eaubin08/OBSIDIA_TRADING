@@ -63,7 +63,45 @@ def _section_input(outcome: CycleOutcome) -> Dict[str, Any]:
         "provenances": provenances,
         "observed_at": outcome.state.observed_at if outcome.state else None,
         "mode": outcome.state.mode.value if outcome.state else None,
+        # F15 : detail par source, pour rendre visible "ce que la stack
+        # propose" (Native ou External) avant toute decision de gouvernance.
+        # Lecture seule des champs deja produits par le runtime (F3.5/F15) —
+        # aucune valeur n'est devinee si un champ (ex: calibration externe)
+        # est absent du signal d'origine.
+        "external_stack_readiness": _section_external_stack_detail(outcome),
     }
+
+
+def _section_external_stack_detail(outcome: CycleOutcome) -> Dict[str, Any]:
+    """
+    F15 — detail des signaux SOURCE=EXTERNAL de ce cycle, s'il y en a.
+
+    N'affecte jamais Authority/Decision : lit uniquement `AgentOutput` deja
+    produits (source_provenance + inputs_digest, remplis par
+    `external/normalization/normalizer.py`). Rien n'est recalcule.
+    """
+    entries = []
+    for ao in outcome.agent_outputs:
+        prov = ao.source_provenance
+        if prov is None or prov.source_system.value != "external":
+            continue
+        entries.append(
+            {
+                "stack_id": prov.source_id,
+                "adapter_id": prov.adapter_id,
+                "organization_id": prov.organization_id,
+                "strategy_id": ao.inputs_digest.get("strategy_id"),
+                "symbol": ao.inputs_digest.get("symbol"),
+                "proposal": ao.signal,
+                "confidence": ao.confidence,
+                "unknowns": list(ao.unknowns),
+                "contradictions": list(ao.contradictions),
+                "risk_flags": list(ao.risk_flags),
+                "evidence_refs": list(ao.evidence_refs),
+                "external_calibration_id": ao.inputs_digest.get("external_calibration_id"),
+            }
+        )
+    return {"present": bool(entries), "signals": entries}
 
 
 def _section_domain_state(outcome: CycleOutcome) -> Dict[str, Any]:
