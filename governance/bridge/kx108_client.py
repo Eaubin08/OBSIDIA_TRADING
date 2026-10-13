@@ -150,14 +150,35 @@ class RealKX108Client:
             )
 
         normalized = dict(kernel_response)
-        if "verdict" not in normalized:
-            raw_authority = normalized.get("x108_gate")
+        # The actual sealed-Kernel response is x108_gate; verdict is a
+        # compatibility field, never a competing decision authority.
+        # If both fields disagree or either is malformed, remove verdict:
+        # GovernanceBridge then performs its existing fail-closed HOLD.
+        raw_gate = normalized.get("x108_gate")
+        raw_legacy = normalized.get("verdict")
+        gate = (
+            raw_gate.strip().upper()
+            if isinstance(raw_gate, str) else None
+        )
+        legacy = (
+            raw_legacy.strip().upper()
+            if isinstance(raw_legacy, str) else None
+        )
+        if "x108_gate" in normalized:
             if (
-                isinstance(raw_authority, str)
-                and raw_authority.strip().upper() in _VALID_KERNEL_AUTHORITIES
+                gate in _VALID_KERNEL_AUTHORITIES
+                and ("verdict" not in normalized or legacy == gate)
             ):
-                normalized["verdict"] = raw_authority.strip().upper()
-            # Sinon : ne rien inventer. Le Governance Bridge fail-close
-            # lui-meme sur l'absence de "verdict" exploitable.
-        normalized.setdefault("source", "KX108_REAL")
+                normalized["verdict"] = gate
+            else:
+                normalized.pop("verdict", None)
+                normalized["contract_error"] = "CONFLICTING_OR_INVALID_KERNEL_AUTHORITY"
+        elif legacy in _VALID_KERNEL_AUTHORITIES:
+            normalized["verdict"] = legacy
+        else:
+            normalized.pop("verdict", None)
+            normalized["contract_error"] = "KERNEL_AUTHORITY_MISSING_OR_INVALID"
+        # This marker identifies the actual HTTP transport, not provider
+        # supplied text that might masquerade as a fixture or authority.
+        normalized["source"] = "KX108_REAL"
         return normalized

@@ -1,0 +1,25 @@
+name: trading-c41-v01-paper-proof-reference-v0
+on:
+  push:
+    branches: [test/c41-v01-paper-proof-convergence-v0]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  c41-paper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip pytest requests numpy
+      - name: Actual Trading engine PAPER proof, guarded KX client
+        run: >-
+          python -m pytest
+          tests/integration/test_c41_v01_paper_proof_convergence_v0.py
+          tests/unit/test_real_kx108_client.py
+          tests/unit/test_reference_runtime_proof_policy.py
+          tests/integration/test_proof_required.py
+          -q
